@@ -24,6 +24,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "dynamixel.h"
+#include "usbd_cdc_if.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -107,8 +110,23 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    Dxl_SimpleTest(1);
-    HAL_Delay(1000);
+    char buf[100];
+    sprintf(buf, "\r\n--- Scanning Dynamixel IDs (0-253) ---\r\n");
+    CDC_Transmit_FS((uint8_t*)buf, strlen(buf));
+    HAL_Delay(100);
+
+    for (uint8_t id = 0; id <= 253; id++) {
+        if (Dxl_Ping(id)) {
+            sprintf(buf, "=> Found Dynamixel ID: %d\r\n", id);
+            CDC_Transmit_FS((uint8_t*)buf, strlen(buf));
+            HAL_Delay(50); // Delay kecil agar buffer USB tidak penuh
+        }
+    }
+    
+    sprintf(buf, "Scan Complete.\r\n");
+    CDC_Transmit_FS((uint8_t*)buf, strlen(buf));
+    
+    HAL_Delay(3000); // Scan lagi setiap 3 detik
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -52,6 +52,7 @@ uint8_t Dxl_Read8(uint8_t id, uint8_t reg);
 uint16_t Dxl_Read16(uint8_t id, uint8_t reg);
 
 /* Helper Functions */
+bool Dxl_Ping(uint8_t id);
 void Dxl_TorqueEnable(uint8_t id, bool enable);
 void Dxl_SetGoalPosition(uint8_t id, uint16_t position);
 void Dxl_SetGoalPositionAndSpeed(uint8_t id, uint16_t position, uint16_t speed);

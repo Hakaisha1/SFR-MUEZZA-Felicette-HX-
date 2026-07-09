@@ -36,6 +36,35 @@ void Dxl_Write16(uint8_t id, uint8_t reg, uint16_t data) {
     Dxl_TransmitPacket(id, DXL_INST_WRITE, params, 3);
 }
 
+bool Dxl_Ping(uint8_t id) {
+    uint8_t packet[6];
+    packet[0] = 0xFF;
+    packet[1] = 0xFF;
+    packet[2] = id;
+    packet[3] = 0x02; // Length
+    packet[4] = DXL_INST_PING; // 0x01
+    
+    uint8_t checksum = id + 0x02 + DXL_INST_PING;
+    packet[5] = ~checksum;
+    
+    // Clear overrun flag in case there's old data
+    __HAL_UART_CLEAR_OREFLAG(dxl_huart);
+    
+    // Transmit
+    HAL_UART_Transmit(dxl_huart, packet, 6, 10);
+    
+    // Receive Status Packet (6 bytes)
+    uint8_t rx_packet[6] = {0};
+    HAL_StatusTypeDef res = HAL_UART_Receive(dxl_huart, rx_packet, 6, 20); // 20ms timeout
+    
+    if (res == HAL_OK) {
+        if (rx_packet[0] == 0xFF && rx_packet[1] == 0xFF && rx_packet[2] == id) {
+            return true; // ID found!
+        }
+    }
+    return false;
+}
+
 void Dxl_TorqueEnable(uint8_t id, bool enable) {
     Dxl_Write8(id, DXL_REG_TORQUE_ENABLE, enable ? 1 : 0);
 }
