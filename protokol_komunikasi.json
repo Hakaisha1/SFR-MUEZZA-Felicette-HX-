@@ -1,0 +1,72 @@
+{
+  "meta_informasi": {
+    "deskripsi": "Protokol Komunikasi UART antara Raspberry Pi 5 (High-Level) dan STM32F405 (Low-Level)",
+    "antarmuka": "UART",
+    "baud_rate": 115200,
+    "endianness": "Little-Endian",
+    "frekuensi_telemetri_hz": 20,
+    "struktur_paket_umum": {
+      "header_1": "0xAA (1 byte)",
+      "header_2": "0x55 (1 byte)",
+      "panjang_payload": "1 byte (N)",
+      "id_pesan": "1 byte",
+      "payload": "N bytes (Data dinamis)",
+      "checksum": "1 byte (XOR Checksum dari ID Pesan dan Payload)"
+    }
+  },
+  "rpi5_ke_stm32_command": {
+    "0x10": {
+      "nama_pesan": "CMD_GERAK_OMNIDIRECTIONAL",
+      "deskripsi": "Perintah translasi dan rotasi dasar hexapod",
+      "payload_format": {
+        "kecepatan_x": "float (4 bytes) - maju/mundur dalam m/s",
+        "kecepatan_y": "float (4 bytes) - geser kiri/kanan (crab walk) dalam m/s",
+        "kecepatan_yaw": "float (4 bytes) - putar kiri/kanan dalam rad/s"
+      }
+    },
+    "0x11": {
+      "nama_pesan": "CMD_MANIPULATOR",
+      "deskripsi": "Mengontrol pergerakan lengan (arm) dan cengkeraman (gripper)",
+      "payload_format": {
+        "sudut_lengan_1": "float (4 bytes) - dalam derajat",
+        "sudut_lengan_2": "float (4 bytes) - dalam derajat",
+        "status_gripper": "uint8_t (1 byte) - 0: Buka, 1: Tutup Kuat (Riil), 2: Tutup Lembut (Dummy)"
+      }
+    },
+    "0x12": {
+      "nama_pesan": "CMD_STATE_CONTROL",
+      "deskripsi": "Mengatur state operasi utama dari STM32 (pemegang keputusan utama adalah RPi5)",
+      "payload_format": {
+        "state_target": "uint8_t (1 byte) - 0: IDLE/STANDBY, 1: WALKING, 2: EVACUATING, 3: EMERGENCY_STOP"
+      }
+    }
+  },
+  "stm32_ke_rpi5_telemetry": {
+    "0x20": {
+      "nama_pesan": "TLM_ROBOT_STATUS",
+      "deskripsi": "Status umum sistem operasi STM32 (Heartbeat)",
+      "payload_format": {
+        "state_sekarang": "uint8_t (1 byte) - state mesin saat ini",
+        "tegangan_baterai": "float (4 bytes) - dalam Volt, untuk monitoring daya LiPo 3S",
+        "status_hardware_error": "uint8_t (1 byte) - Bitmask (Bit 0: Servo Error, Bit 1: IMU Error, Bit 2: ToF Error)"
+      }
+    },
+    "0x21": {
+      "nama_pesan": "TLM_SENSOR_DATA",
+      "deskripsi": "Data aktual dari sensor ToF (VL53L1X) dan IMU (MPU-9250)",
+      "payload_format": {
+        "tof_depan_mm": "uint16_t (2 bytes)",
+        "tof_belakang_mm": "uint16_t (2 bytes)",
+        "tof_kiri_mm": "uint16_t (2 bytes)",
+        "tof_kanan_mm": "uint16_t (2 bytes)",
+        "imu_roll": "float (4 bytes) - derajat",
+        "imu_pitch": "float (4 bytes) - derajat"
+      }
+    }
+  },
+  "penanganan_kesalahan_dan_safety": {
+    "checksum": "Menggunakan operasi bitwise XOR pada Length, Message ID, dan semua byte Payload. Jika Checksum tidak cocok di penerima, paket diabaikan (dropped).",
+    "timeout_komunikasi": "Jika STM32 tidak menerima pesan CMD apapun dari RPi5 selama 500ms, STM32 mengasumsikan koneksi terputus.",
+    "failsafe_action": "Saat timeout terjadi, STM32 otomatis memaksa robot pindah ke state EMERGENCY_STOP (berhenti bergerak, posisi mengunci) untuk menghindari tabrakan tak terkendali."
+  }
+}
