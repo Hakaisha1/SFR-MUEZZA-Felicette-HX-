@@ -40,90 +40,142 @@ Robot menggunakan **4 sensor ultrasonik HC-SR04** (depan, belakang, kiri, kanan)
 
 ---
 
-## 4. Timeline Mingguan (Contoh — 10 Minggu)
+## 4. Milestone Roadmap
 
-Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start lebih awal & buffer lebih besar karena paling bergantung pada hardware fisik dan matematika kinematika.
-
-### Minggu 1 — Define Interface & Setup
-- **Semua**: diskusi protokol komunikasi, state machine, repo setup
-- **Vision**: setup environment (OpenCV/YOLO), kumpulkan sample data awal (foto dummy & korban riil)
-- **Movement**: pelajari/derive kinematika 1 kaki (3 DOF), setup komunikasi ke Dynamixel; pasang & verifikasi 4 sensor ultrasonik HC-SR04
-- **Integration**: bikin skeleton UART RPi5↔STM32 dengan data dummy (belum ada logic asli)
-
-### Minggu 2–3 — Core Development (Paralel)
-- **Vision**:
-  - Deteksi objek dasar (contour/color detection atau model ringan)
-  - Klasifikasi dummy vs riil (warna + ada/tidak lengan)
-  - Testing pakai video/gambar, belum di robot asli
-- **Movement**:
-  - Inverse kinematics 1 kaki → generalisasi ke 6 kaki
-  - Implementasi gait dasar (tripod gait) untuk jalan lurus
-  - Driver ultrasonik HC-SR04 (timer input-capture, 4 kanal bergiliran)
-  - Testing fisik di hardware (paling banyak trial-and-error di sini)
-- **Integration**:
-  - Implementasi state machine dengan command placeholder
-  - Watchdog/timeout untuk komunikasi
-
-### Minggu 4 — Movement Lanjutan
-- **Movement**:
-  - Belok, mundur, penyesuaian gait di medan tidak rata (integrasi IMU)
-  - Kontrol gripper/arm dasar
-  - Obstacle reflex ultrasonik terbukti aktif (tanpa menunggu RPi5)
-- **Vision**:
-  - Tuning akurasi klasifikasi, mulai uji dengan variasi pencahayaan
-- **Integration**:
-  - Mulai sambungkan output vision → state machine (belum ke movement asli)
-
-### Minggu 5 — Integrasi Tahap 1
-- Sambungkan **vision → integration**: robot bisa "melihat" & mengklasifikasi target secara live
-- **Movement**: finalisasi obstacle avoidance low-level pakai ultrasonik HC-SR04 (refleks cepat, tidak menunggu RPi5)
-- Testing modul per modul masih terpisah, belum full pipeline
-
-### Minggu 6 — Integrasi Tahap 2
-- Sambungkan **integration → movement**: command asli mulai dikirim ke STM32
-- Testing end-to-end sederhana: robot cari objek → dekati → klasifikasi
-- Mulai catat bug & edge case (mis. false positive klasifikasi, gait tidak stabil saat belok mendekati target)
-
-### Minggu 7 — Full Pipeline
-- End-to-end penuh: **cari → dekati → klasifikasi → grip → bawa ke drop zone → lepas**
-- Debugging bersama (integration memimpin sesi ini)
-- Vision & Movement standby untuk perbaikan cepat sesuai bug yang ditemukan
-
-### Minggu 8 — Robustness & Edge Case
-- Handling kegagalan: gripper gagal, salah klasifikasi, robot nabrak/terjebak
-- Failsafe di STM32 kalau komunikasi UART terputus
-- Stress test: berbagai posisi target, jarak, sudut kamera
-- Validasi noise ultrasonik (pantulan lantai/dinding, crosstalk antar sensor)
-
-### Minggu 9 — Tuning & Optimasi
-- Optimasi kecepatan gait vs stabilitas
-- Optimasi kecepatan inferensi vision (FPS vs akurasi)
-- Battery/power test saat semua servo aktif bersamaan
-
-### Minggu 10 — Buffer & Simulasi Lomba
-- Full run berulang kali meniru kondisi arena lomba
-- Perbaikan minor & dokumentasi
-- Cadangan waktu jika ada kendala hardware elektrik
+Progres diukur berdasarkan **pencapaian milestone**, bukan minggu. Setiap milestone punya syarat selesai yang jelas. Milestone harus diselesaikan **berurutan** — tidak boleh lompat ke milestone berikutnya jika milestone sebelumnya belum tercapai.
 
 ---
 
-## 5. Milestone Checklist
+### 🏁 M0 — Setup & Kesepakatan Interface
 
-- [ ] Protokol komunikasi & state machine disepakati
-- [ ] Vision: bisa klasifikasi dummy vs riil dengan akurasi memadai (offline test)
-- [ ] Movement: robot bisa jalan lurus, belok, gripper berfungsi
-- [ ] Movement: 4 sensor ultrasonik HC-SR04 terbaca & obstacle reflex aktif (< 8 cm)
-- [ ] Integration: pipeline vision → decision → movement tersambung
-- [ ] Full end-to-end run pertama berhasil (walau belum sempurna)
-- [ ] Robustness: robot punya failsafe untuk kegagalan umum
-- [ ] Tuning akhir & simulasi kondisi lomba
+> **Gerbang masuk**: Semua anggota sudah clone repo dan bisa build/run di environment masing-masing.
+
+| Divisi | Deliverable | Syarat Selesai |
+|---|---|---|
+| **Semua** | Protokol komunikasi & state machine disepakati | `protokol_komunikasi.json`, `data_contract.json`, `state_machine.md` final dan di-review bertiga |
+| **Semua** | Repo & branch strategy berjalan | Semua bisa push ke branch masing-masing, PR pertama berhasil merge |
+| **Vision** | Environment siap | OpenCV/YOLO terinstall di RPi5, kamera terbaca stabil 640×480 |
+| **Movement** | Environment siap | PlatformIO bisa build & flash ke STM32, 1 servo Dynamixel bisa digerakkan |
+| **Integration** | Skeleton UART berjalan | RPi5 bisa kirim & terima paket dummy ke/dari STM32 tanpa error |
+
+**Blocker jika belum selesai**: Tidak ada gunanya mulai coding fitur kalau interface belum disepakati — akan tabrakan nanti.
 
 ---
 
-## 6. Catatan Manajemen Risiko
+### 🏁 M1 — Fondasi Per Divisi (Paralel)
 
-- **Movement** paling bergantung pada hardware fisik → prioritaskan akses ke robot untuk role ini di minggu-minggu awal.
-- **Ultrasonik HC-SR04** rentan terhadap crosstalk jika 4 sensor ditrigger bersamaan → gunakan pola trigger bergiliran dengan jeda ≥ 20ms. Validasi juga pada permukaan dengan sudut ekstrem (lantai bertekstur, objek tipis) karena ultrasonik lebih sensitif terhadap sudut pantulan dibanding ToF.
+> **Gerbang masuk**: M0 selesai.
+
+| Divisi | Deliverable | Syarat Selesai |
+|---|---|---|
+| **Vision** | Deteksi target dasar | Bounding box muncul di gambar/video uji offline, HSV atau model ringan |
+| **Vision** | Klasifikasi dummy vs riil | Akurasi ≥ 85% pada dataset uji offline |
+| **Vision** | Estimasi jarak | Error ≤ ±5 cm pada rentang 15–80 cm |
+| **Movement** | Inverse Kinematics | IK 1 kaki tervalidasi (plot/simulasi), digeneralisasi ke 6 kaki |
+| **Movement** | Tripod gait jalan lurus | Robot bisa jalan lurus stabil di lantai datar |
+| **Movement** | Driver ultrasonik HC-SR04 | 4 sensor terbaca via TIM input-capture, trigger bergiliran, nilai jarak wajar |
+| **Integration** | State machine skeleton | Transisi IDLE→WALKING→APPROACHING berjalan dengan data placeholder |
+| **Integration** | Watchdog UART | Timeout 500ms terbukti aktif (cabut kabel → robot berhenti) |
+
+**Catatan**: Setiap divisi bekerja paralel. Vision & Movement belum perlu terhubung ke robot secara penuh.
+
+---
+
+### 🏁 M2 — Movement Lanjutan
+
+> **Gerbang masuk**: M1 Movement selesai (gait lurus + IK + ultrasonik).
+
+| Divisi | Deliverable | Syarat Selesai |
+|---|---|---|
+| **Movement** | Gait belok & mundur | Robot bisa belok kiri/kanan dan mundur stabil |
+| **Movement** | Integrasi IMU | Roll & pitch terbaca akurat ≤ ±2°, koreksi postur aktif di medan miring |
+| **Movement** | Gripper/arm | Gripper Dynamixel + MG90S bisa buka/tutup terkontrol via command |
+| **Movement** | Obstacle reflex aktif | Ultrasonik < 80mm → robot berhenti instan (tanpa menunggu RPi5) |
+| **Vision** | Tuning klasifikasi | Diuji dalam variasi pencahayaan: terang, redup, backlit |
+| **Integration** | Vision → state machine | Output Vision live terhubung ke state machine (belum ke Movement asli) |
+
+---
+
+### 🏁 M3 — Integrasi Awal
+
+> **Gerbang masuk**: M1 semua divisi selesai, M2 Movement selesai.
+
+| Divisi | Deliverable | Syarat Selesai |
+|---|---|---|
+| **Semua** | Vision → Integration terhubung | Robot bisa "melihat" & mengklasifikasi target secara live |
+| **Semua** | Integration → Movement terhubung | Command asli dari state machine dikirim ke STM32, robot bergerak sesuai keputusan |
+| **Semua** | End-to-end sederhana | Robot cari objek → dekati → klasifikasi (boleh belum grip) |
+
+**Blocker jika belum selesai**: Jangan lanjut ke M4 jika pipeline dasar belum tersambung — semua fitur lanjutan tidak bisa diuji.
+
+---
+
+### 🏁 M4 — Full Pipeline
+
+> **Gerbang masuk**: M3 selesai (pipeline dasar tersambung).
+
+| Deliverable | Syarat Selesai |
+|---|---|
+| Full run end-to-end | **cari → dekati → klasifikasi → grip → bawa → drop → cari lagi** berhasil minimal 1x |
+| Bug list terdokumentasi | Semua bug & edge case yang ditemukan dicatat (issue/dokumen) |
+| Telemetri stabil | `TLM_ROBOT_STATUS` & `TLM_SENSOR_DATA` diterima RPi5 tanpa putus selama full run |
+
+---
+
+### 🏁 M5 — Robustness & Failsafe
+
+> **Gerbang masuk**: M4 selesai (full pipeline pernah berhasil).
+
+| Deliverable | Syarat Selesai |
+|---|---|
+| Handling gripper gagal | Robot retry gripping 2x, jika gagal → kembali SEARCHING, objek ditandai |
+| Handling salah klasifikasi | Robot tidak infinite loop pada objek yang sama |
+| Failsafe UART | Komunikasi terputus → EMERGENCY_STOP dalam 500ms |
+| Validasi noise ultrasonik | Diuji dengan permukaan miring, lantai bertekstur, objek tipis — tidak false trigger |
+| Stress test | Diuji dengan berbagai posisi target, jarak, sudut kamera, durasi panjang |
+
+---
+
+### 🏁 M6 — Tuning & Simulasi Lomba
+
+> **Gerbang masuk**: M5 selesai (robot punya failsafe dan handling kegagalan).
+
+| Deliverable | Syarat Selesai |
+|---|---|
+| Optimasi gait | Kecepatan vs stabilitas sudah dituning untuk kondisi arena |
+| Optimasi vision | Inferensi ≤ 100ms/frame (10 FPS minimum), akurasi tetap ≥ 85% |
+| Battery test | Full run dengan semua servo aktif, durasi cukup untuk sesi lomba |
+| Simulasi lomba | Minimal **3x full run berturut-turut** meniru kondisi arena tanpa kegagalan fatal |
+| Dokumentasi final | Semua dokumen up-to-date, tidak ada info yang outdated |
+
+---
+
+### Ringkasan Dependensi Antar Milestone
+
+```
+M0 (Setup & Kesepakatan)
+ │
+ ├── M1 Vision (paralel)──────┐
+ ├── M1 Movement (paralel)────┤
+ └── M1 Integration (paralel)─┤
+                               │
+                     M2 Movement Lanjutan
+                               │
+                         M3 Integrasi Awal
+                               │
+                         M4 Full Pipeline
+                               │
+                      M5 Robustness & Failsafe
+                               │
+                      M6 Tuning & Simulasi Lomba
+```
+
+---
+
+## 5. Catatan Manajemen Risiko
+
+- **Movement** paling bergantung pada hardware fisik → prioritaskan akses ke robot untuk role ini di milestone awal (M1–M2).
+- **Ultrasonik HC-SR04** rentan terhadap crosstalk jika 4 sensor ditrigger bersamaan → gunakan pola trigger bergiliran dengan jeda ≥ 20ms. Validasi juga pada permukaan dengan sudut ekstrem (lantai bertekstur, objek tipis) karena ultrasonik lebih sensitif terhadap sudut pantulan.
 - **Vision** butuh banyak data uji realistis → mulai kumpulkan foto/video kondisi arena sedini mungkin, jangan tunggu robot jadi.
-- **Integration** akan menjadi titik debugging tersibuk di minggu 5–8 → alokasikan waktu ekstra & komunikasi intens dengan dua role lain.
-- Sisakan minimal 1 minggu buffer sebelum deadline untuk kejutan teknis (servo rusak, baterai drop, dsb — ini ranah tim elektrik tapi berdampak ke testing software).
+- **Integration** akan menjadi titik debugging tersibuk di M3–M5 → alokasikan waktu ekstra & komunikasi intens dengan dua role lain.
+- Sisakan waktu buffer sebelum deadline untuk kejutan teknis (servo rusak, baterai drop, dsb — ini ranah tim elektrik tapi berdampak ke testing software).
