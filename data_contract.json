@@ -1,0 +1,299 @@
+{
+  "_meta": {
+    "nama_file": "data_contract.json",
+    "deskripsi": "Kontrak Data resmi proyek SAR Hexapod MUEZZA (Felicette HX). File ini adalah satu-satunya sumber kebenaran (single source of truth) untuk semua format data yang dipertukarkan antar divisi. DILARANG mengubah format tanpa persetujuan semua divisi terkait.",
+    "versi": "1.0.0",
+    "tanggal_berlaku": "2026-08-21",
+    "pemilik": "Integration",
+    "catatan_perubahan": [
+      {
+        "versi": "1.0.0",
+        "tanggal": "2026-08-21",
+        "deskripsi": "Inisialisasi kontrak data. Sensor obstacle avoidance: 4x HC-SR04 ultrasonik (tanpa ToF VL53L1X)."
+      }
+    ]
+  },
+
+  "aturan_umum": {
+    "endianness": "Little-Endian (UART STM32 ↔ RPi5)",
+    "encoding_json": "UTF-8 (Python socket/pipe Vision ↔ Integration)",
+    "satuan_jarak_sensor": "milimeter (mm) untuk data UART STM32",
+    "satuan_jarak_vision": "sentimeter (cm) untuk estimasi Vision",
+    "satuan_sudut": "derajat (°)",
+    "satuan_kecepatan": "meter per detik (m/s) untuk translasi, radian per detik (rad/s) untuk rotasi",
+    "timestamp": "Unix epoch dalam milidetik (int64)"
+  },
+
+  "kontrak_vision_ke_integration": {
+    "_deskripsi": "Data yang dipublikasikan oleh /vision dan dikonsumsi oleh /integration. Dikirim via socket lokal atau named pipe di RPi5.",
+    "_transport": "Python socket (localhost) atau multiprocessing.Queue",
+    "_frekuensi_hz": 10,
+    "format": {
+      "label": {
+        "tipe": "string",
+        "nilai_valid": ["dummy", "riil", "tidak_ada"],
+        "keterangan": "Hasil klasifikasi target. Kirim 'tidak_ada' jika tidak ada deteksi — jangan diam."
+      },
+      "confidence": {
+        "tipe": "float",
+        "rentang": "0.0 – 1.0",
+        "keterangan": "Keyakinan klasifikasi dari model. Integration akan mengabaikan deteksi di bawah threshold 0.75."
+      },
+      "posisi_x_px": {
+        "tipe": "int",
+        "satuan": "piksel",
+        "keterangan": "Koordinat X pusat bounding box target pada frame kamera. 0 = tepi kiri."
+      },
+      "posisi_y_px": {
+        "tipe": "int",
+        "satuan": "piksel",
+        "keterangan": "Koordinat Y pusat bounding box target pada frame kamera. 0 = tepi atas."
+      },
+      "jarak_estimasi_cm": {
+        "tipe": "float",
+        "satuan": "sentimeter",
+        "keterangan": "Estimasi jarak robot ke target. Null atau 0.0 jika label = 'tidak_ada'."
+      },
+      "timestamp_ms": {
+        "tipe": "int",
+        "satuan": "Unix milliseconds",
+        "keterangan": "Waktu saat frame diambil. Integration menggunakan ini untuk mendeteksi data Vision yang kedaluwarsa (stale > 500ms)."
+      }
+    },
+    "contoh_ada_target": {
+      "label": "riil",
+      "confidence": 0.91,
+      "posisi_x_px": 320,
+      "posisi_y_px": 240,
+      "jarak_estimasi_cm": 45.0,
+      "timestamp_ms": 1724165031000
+    },
+    "contoh_tidak_ada_target": {
+      "label": "tidak_ada",
+      "confidence": 0.0,
+      "posisi_x_px": 0,
+      "posisi_y_px": 0,
+      "jarak_estimasi_cm": 0.0,
+      "timestamp_ms": 1724165031200
+    }
+  },
+
+  "kontrak_integration_ke_movement": {
+    "_deskripsi": "Command yang dikirim /integration (RPi5) ke /movement (STM32) via UART. Format paket: [0xAA][0x55][LENGTH][MSG_ID][PAYLOAD...][CHECKSUM_XOR].",
+    "_transport": "UART 115200 baud, Little-Endian",
+    "_frekuensi_hz": 10,
+    "checksum": "XOR dari MSG_ID dan semua byte PAYLOAD",
+    "pesan": {
+      "0x10": {
+        "nama": "CMD_GERAK_OMNIDIRECTIONAL",
+        "deskripsi": "Perintah kecepatan gerak hexapod: maju/mundur, geser, rotasi.",
+        "payload": {
+          "kecepatan_x": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "m/s",
+            "keterangan": "Positif = maju, negatif = mundur."
+          },
+          "kecepatan_y": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "m/s",
+            "keterangan": "Positif = geser kanan (crab walk), negatif = geser kiri."
+          },
+          "kecepatan_yaw": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "rad/s",
+            "keterangan": "Positif = putar kanan, negatif = putar kiri."
+          }
+        },
+        "total_payload_bytes": 12,
+        "contoh_struct_pack": "struct.pack('<fff', 0.3, 0.0, 0.0)  # maju 0.3 m/s"
+      },
+      "0x11": {
+        "nama": "CMD_MANIPULATOR",
+        "deskripsi": "Perintah posisi lengan (arm) dan cengkeraman gripper.",
+        "payload": {
+          "sudut_lengan_1": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "derajat",
+            "keterangan": "Sudut sendi pertama lengan manipulator."
+          },
+          "sudut_lengan_2": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "derajat",
+            "keterangan": "Sudut sendi kedua lengan manipulator."
+          },
+          "status_gripper": {
+            "tipe": "uint8",
+            "ukuran_bytes": 1,
+            "nilai_valid": {
+              "0": "Buka",
+              "1": "Tutup Kuat (untuk evakuasi korban riil)",
+              "2": "Tutup Lembut (untuk evakuasi dummy, hindari kerusakan)"
+            }
+          }
+        },
+        "total_payload_bytes": 9,
+        "contoh_struct_pack": "struct.pack('<ffB', 45.0, 90.0, 2)  # lengan terbuka, gripper lembut"
+      },
+      "0x12": {
+        "nama": "CMD_STATE_CONTROL",
+        "deskripsi": "Perintah paksa ganti state utama robot di STM32.",
+        "payload": {
+          "state_target": {
+            "tipe": "uint8",
+            "ukuran_bytes": 1,
+            "nilai_valid": {
+              "0": "IDLE / STANDBY — servo aktif, robot diam",
+              "1": "WALKING — robot bergerak sesuai CMD_GERAK",
+              "2": "EVACUATING — robot dalam proses evakuasi target",
+              "3": "EMERGENCY_STOP — semua servo berhenti, posisi mengunci"
+            }
+          }
+        },
+        "total_payload_bytes": 1,
+        "contoh_struct_pack": "struct.pack('<B', 3)  # paksa EMERGENCY_STOP"
+      }
+    }
+  },
+
+  "kontrak_movement_ke_integration": {
+    "_deskripsi": "Telemetri yang dikirim /movement (STM32) ke /integration (RPi5) via UART. Dikirim secara periodik tanpa diminta (push).",
+    "_transport": "UART 115200 baud, Little-Endian",
+    "_frekuensi_hz": 20,
+    "checksum": "XOR dari MSG_ID dan semua byte PAYLOAD",
+    "pesan": {
+      "0x20": {
+        "nama": "TLM_ROBOT_STATUS",
+        "deskripsi": "Heartbeat umum sistem STM32. Wajib dikirim setiap 50ms.",
+        "payload": {
+          "state_sekarang": {
+            "tipe": "uint8",
+            "ukuran_bytes": 1,
+            "nilai_valid": {
+              "0": "IDLE",
+              "1": "WALKING",
+              "2": "EVACUATING",
+              "3": "EMERGENCY_STOP"
+            }
+          },
+          "tegangan_baterai": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "Volt",
+            "keterangan": "Tegangan LiPo 3S. Warn di bawah 10.5V, critical di bawah 9.9V."
+          },
+          "status_hardware_error": {
+            "tipe": "uint8 (bitmask)",
+            "ukuran_bytes": 1,
+            "bit_map": {
+              "bit_0": "Servo Error — ada servo tidak merespons atau over-temperature",
+              "bit_1": "IMU Error — MPU-9250 tidak terbaca atau data tidak valid",
+              "bit_2": "Ultrasonik Error — satu atau lebih sensor HC-SR04 tidak memberikan echo",
+              "bit_3_7": "Reserved (harus 0)"
+            }
+          }
+        },
+        "total_payload_bytes": 6,
+        "contoh_struct_unpack": "state, volt, err = struct.unpack('<BfB', payload)"
+      },
+      "0x21": {
+        "nama": "TLM_SENSOR_DATA",
+        "deskripsi": "Data sensor ultrasonik HC-SR04 (4 arah, dibaca STM32 via TIM Input-Capture secara bergiliran) dan IMU.",
+        "payload": {
+          "us_depan_mm": {
+            "tipe": "uint16",
+            "ukuran_bytes": 2,
+            "satuan": "mm",
+            "keterangan": "Jarak objek di depan robot. 9999 = tidak ada echo / keluar jangkauan."
+          },
+          "us_belakang_mm": {
+            "tipe": "uint16",
+            "ukuran_bytes": 2,
+            "satuan": "mm",
+            "keterangan": "Jarak objek di belakang robot. 9999 = tidak ada echo / keluar jangkauan."
+          },
+          "us_kiri_mm": {
+            "tipe": "uint16",
+            "ukuran_bytes": 2,
+            "satuan": "mm",
+            "keterangan": "Jarak objek di kiri robot. 9999 = tidak ada echo / keluar jangkauan."
+          },
+          "us_kanan_mm": {
+            "tipe": "uint16",
+            "ukuran_bytes": 2,
+            "satuan": "mm",
+            "keterangan": "Jarak objek di kanan robot. 9999 = tidak ada echo / keluar jangkauan."
+          },
+          "imu_roll": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "derajat",
+            "keterangan": "Roll kiri-kanan robot. Positif = miring ke kanan."
+          },
+          "imu_pitch": {
+            "tipe": "float32",
+            "ukuran_bytes": 4,
+            "satuan": "derajat",
+            "keterangan": "Pitch depan-belakang robot. Positif = mendongak."
+          }
+        },
+        "total_payload_bytes": 16,
+        "contoh_struct_unpack": "dep, bel, kir, kan, roll, pitch = struct.unpack('<HHHHff', payload)"
+      }
+    }
+  },
+
+  "batas_tanggung_jawab": {
+    "_deskripsi": "Tabel ini mendefinisikan siapa yang BOLEH menulis ke setiap data/channel. Melanggar batas ini menyebabkan konflik logika.",
+    "vision_output_json": {
+      "penulis": "Vision",
+      "pembaca": ["Integration"],
+      "larangan": "Integration dan Movement TIDAK BOLEH menulis ke channel ini."
+    },
+    "uart_rpi5_ke_stm32": {
+      "penulis": "Integration (via uart_driver.py)",
+      "pembaca": ["Movement (STM32 firmware)"],
+      "larangan": "Vision TIDAK BOLEH mengirim apapun ke UART STM32. Movement TIDAK BOLEH memproses kamera."
+    },
+    "uart_stm32_ke_rpi5": {
+      "penulis": "Movement (STM32 firmware)",
+      "pembaca": ["Integration (via uart_driver.py)"],
+      "larangan": "Integration hanya MEMBACA telemetri, tidak memodifikasinya."
+    },
+    "obstacle_avoidance_reflex": {
+      "pemilik": "Movement (STM32, lokal)",
+      "keterangan": "Keputusan berhenti berdasarkan sensor ultrasonik HC-SR04 < 80mm dilakukan LANGSUNG di STM32 tanpa menunggu perintah dari RPi5. Integration tidak boleh mengandalkan RPi5 untuk reflex ini."
+    },
+    "state_machine_utama": {
+      "pemilik": "Integration (RPi5)",
+      "keterangan": "Integration adalah satu-satunya yang memutuskan perubahan state melalui CMD_STATE_CONTROL (0x12). STM32 hanya bereaksi, kecuali untuk EMERGENCY_STOP lokal."
+    }
+  },
+
+  "nilai_sentinel_dan_batas": {
+    "ultrasonik_tidak_terdeteksi_mm": 9999,
+    "confidence_threshold_minimum": 0.75,
+    "jarak_evakuasi_cm": 15,
+    "obstacle_reflex_threshold_mm": 80,
+    "timeout_uart_ms": 500,
+    "baterai_warn_volt": 10.5,
+    "baterai_critical_volt": 9.9,
+    "servo_overtemp_celsius": 65,
+    "frekuensi_trigger_ultrasonik_per_sensor_ms": 25
+  },
+
+  "prosedur_perubahan_kontrak": {
+    "langkah": [
+      "1. Buka GitHub Issue / diskusikan di grup tim dengan subject: [KONTRAK] nama perubahan.",
+      "2. Dapatkan ACK (persetujuan tertulis) dari SEMUA divisi yang terdampak sebelum commit.",
+      "3. Update file ini (data_contract.json) dan protokol_komunikasi.json secara bersamaan dalam satu commit.",
+      "4. Update agent.md dan guide.md divisi terkait.",
+      "5. Bump field 'versi' dan tambahkan entry baru di 'catatan_perubahan'."
+    ],
+    "peringatan": "Mengubah nama field, tipe data, atau urutan byte di payload UART tanpa koordinasi AKAN menyebabkan data korup atau robot berperilaku tidak terduga."
+  }
+}

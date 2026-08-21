@@ -48,17 +48,17 @@
       "payload_format": {
         "state_sekarang": "uint8_t (1 byte) - state mesin saat ini",
         "tegangan_baterai": "float (4 bytes) - dalam Volt, untuk monitoring daya LiPo 3S",
-        "status_hardware_error": "uint8_t (1 byte) - Bitmask (Bit 0: Servo Error, Bit 1: IMU Error, Bit 2: ToF Error)"
+        "status_hardware_error": "uint8_t (1 byte) - Bitmask (Bit 0: Servo Error, Bit 1: IMU Error, Bit 2: Ultrasonik Error)"
       }
     },
     "0x21": {
       "nama_pesan": "TLM_SENSOR_DATA",
-      "deskripsi": "Data aktual dari sensor ToF (VL53L1X) dan IMU (MPU-9250)",
+      "deskripsi": "Data aktual dari 4 sensor ultrasonik HC-SR04 dan IMU (MPU-9250). Sensor dibaca STM32 via TIM Input-Capture secara bergiliran.",
       "payload_format": {
-        "tof_depan_mm": "uint16_t (2 bytes)",
-        "tof_belakang_mm": "uint16_t (2 bytes)",
-        "tof_kiri_mm": "uint16_t (2 bytes)",
-        "tof_kanan_mm": "uint16_t (2 bytes)",
+        "us_depan_mm": "uint16_t (2 bytes)",
+        "us_belakang_mm": "uint16_t (2 bytes)",
+        "us_kiri_mm": "uint16_t (2 bytes)",
+        "us_kanan_mm": "uint16_t (2 bytes)",
         "imu_roll": "float (4 bytes) - derajat",
         "imu_pitch": "float (4 bytes) - derajat"
       }

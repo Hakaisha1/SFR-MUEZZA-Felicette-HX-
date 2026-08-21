@@ -23,7 +23,7 @@ Agent Integration adalah **jembatan** antara tim Vision dan tim Movement. Peran 
 
 ## Interface yang Harus Dipatuhi
 
-Lihat [`protokol_komunikasi.json`](../protokol_komunikasi.json) untuk format lengkap paket UART.
+Lihat [`data_contract.json`](../data_contract.json) sebagai **sumber kebenaran tunggal** untuk semua format data antar divisi. Lihat juga [`protokol_komunikasi.json`](../protokol_komunikasi.json) untuk detail teknis paket UART.
 
 ### Menerima dari Vision
 ```json
@@ -43,7 +43,7 @@ Lihat [`protokol_komunikasi.json`](../protokol_komunikasi.json) untuk format len
 
 ### Menerima dari STM32 (Telemetry)
 - `TLM_ROBOT_STATUS` (`0x20`) — heartbeat, tegangan, error flag
-- `TLM_SENSOR_DATA` (`0x21`) — ToF & IMU
+- `TLM_SENSOR_DATA` (`0x21`) — Ultrasonik HC-SR04 (4 arah) & IMU
 
 ## State Machine Utama
 
@@ -58,3 +58,5 @@ Lihat [`protokol_komunikasi.json`](../protokol_komunikasi.json) untuk format len
 ## Kontak Tim
 - **Vision**: Hubungi jika format output vision berubah atau confidence threshold perlu disesuaikan.
 - **Movement**: Hubungi jika command yang dikirim tidak menghasilkan respons gerak yang diharapkan.
+
+> ⚠️ Sebelum mengubah format data apapun, ikuti **prosedur perubahan kontrak** di [`data_contract.json`](../data_contract.json).

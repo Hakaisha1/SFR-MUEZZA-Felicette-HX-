@@ -2,6 +2,8 @@
 
 Panduan teknis pengembangan untuk folder `/integration`. Baca `agent.md` terlebih dahulu sebelum dokumen ini.
 
+> 📋 **Kontrak Data**: Semua format data antar divisi didefinisikan di [`data_contract.json`](../data_contract.json). Gunakan file tersebut sebagai referensi utama saat implementasi parser, sender, atau listener.
+
 ---
 
 ## Setup Environment

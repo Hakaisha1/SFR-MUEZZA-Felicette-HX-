@@ -2,6 +2,8 @@
 
 Panduan teknis pengembangan untuk folder `/vision`. Baca `agent.md` terlebih dahulu sebelum dokumen ini.
 
+> 📋 **Kontrak Data**: Format output JSON Vision→Integration didefinisikan di [`data_contract.json`](../data_contract.json). Pastikan field, tipe data, dan nilai sentinel sesuai kontrak tersebut.
+
 ---
 
 ## Setup Environment

@@ -14,7 +14,22 @@ Dokumen ini adalah rencana kerja tim software untuk robot SAR hexapod (evakuasi 
 
 ---
 
-## 2. Prasyarat Sebelum Mulai Coding
+## 2. Stack Sensor Obstacle Avoidance
+
+Robot menggunakan **4 sensor ultrasonik HC-SR04** (depan, belakang, kiri, kanan) untuk obstacle avoidance refleks — **tanpa sensor ToF (VL53L1X)**. Pembacaan diproses langsung di STM32 via timer input-capture, hasilnya dikirim ke RPi5 melalui telemetri UART.
+
+| Posisi | Metode Baca STM32 | Threshold Reflex |
+|---|---|---|
+| Depan | TIM Input-Capture (ECHO pin) | < 8 cm → hentikan maju |
+| Belakang | TIM Input-Capture (ECHO pin) | < 8 cm → hentikan mundur |
+| Kiri | TIM Input-Capture (ECHO pin) | < 8 cm → hentikan geser kiri |
+| Kanan | TIM Input-Capture (ECHO pin) | < 8 cm → hentikan geser kanan |
+
+> ⚠️ Trigger 4 sensor secara bergiliran (bukan bersamaan) dengan jeda minimal 20ms antar trigger untuk menghindari crosstalk dan pantulan ganda.
+
+---
+
+## 3. Prasyarat Sebelum Mulai Coding
 
 - [ ] Sepakati **protokol komunikasi** RPi5 ↔ STM32 (format command & telemetry, baud rate UART, checksum/error handling)
 - [ ] Sepakati **state machine** utama robot (siapa pemegang keputusan di tiap state)
@@ -25,14 +40,14 @@ Dokumen ini adalah rencana kerja tim software untuk robot SAR hexapod (evakuasi 
 
 ---
 
-## 3. Timeline Mingguan (Contoh — 10 Minggu)
+## 4. Timeline Mingguan (Contoh — 10 Minggu)
 
 Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start lebih awal & buffer lebih besar karena paling bergantung pada hardware fisik dan matematika kinematika.
 
 ### Minggu 1 — Define Interface & Setup
 - **Semua**: diskusi protokol komunikasi, state machine, repo setup
 - **Vision**: setup environment (OpenCV/YOLO), kumpulkan sample data awal (foto dummy & korban riil)
-- **Movement**: pelajari/derive kinematika 1 kaki (3 DOF), setup komunikasi ke Dynamixel
+- **Movement**: pelajari/derive kinematika 1 kaki (3 DOF), setup komunikasi ke Dynamixel; pasang & verifikasi 4 sensor ultrasonik HC-SR04
 - **Integration**: bikin skeleton UART RPi5↔STM32 dengan data dummy (belum ada logic asli)
 
 ### Minggu 2–3 — Core Development (Paralel)
@@ -43,6 +58,7 @@ Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start 
 - **Movement**:
   - Inverse kinematics 1 kaki → generalisasi ke 6 kaki
   - Implementasi gait dasar (tripod gait) untuk jalan lurus
+  - Driver ultrasonik HC-SR04 (timer input-capture, 4 kanal bergiliran)
   - Testing fisik di hardware (paling banyak trial-and-error di sini)
 - **Integration**:
   - Implementasi state machine dengan command placeholder
@@ -52,6 +68,7 @@ Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start 
 - **Movement**:
   - Belok, mundur, penyesuaian gait di medan tidak rata (integrasi IMU)
   - Kontrol gripper/arm dasar
+  - Obstacle reflex ultrasonik terbukti aktif (tanpa menunggu RPi5)
 - **Vision**:
   - Tuning akurasi klasifikasi, mulai uji dengan variasi pencahayaan
 - **Integration**:
@@ -59,7 +76,7 @@ Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start 
 
 ### Minggu 5 — Integrasi Tahap 1
 - Sambungkan **vision → integration**: robot bisa "melihat" & mengklasifikasi target secara live
-- **Movement**: finalisasi obstacle avoidance low-level pakai ToF (refleks cepat, tidak menunggu RPi5)
+- **Movement**: finalisasi obstacle avoidance low-level pakai ultrasonik HC-SR04 (refleks cepat, tidak menunggu RPi5)
 - Testing modul per modul masih terpisah, belum full pipeline
 
 ### Minggu 6 — Integrasi Tahap 2
@@ -76,6 +93,7 @@ Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start 
 - Handling kegagalan: gripper gagal, salah klasifikasi, robot nabrak/terjebak
 - Failsafe di STM32 kalau komunikasi UART terputus
 - Stress test: berbagai posisi target, jarak, sudut kamera
+- Validasi noise ultrasonik (pantulan lantai/dinding, crosstalk antar sensor)
 
 ### Minggu 9 — Tuning & Optimasi
 - Optimasi kecepatan gait vs stabilitas
@@ -89,11 +107,12 @@ Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start 
 
 ---
 
-## 4. Milestone Checklist
+## 5. Milestone Checklist
 
 - [ ] Protokol komunikasi & state machine disepakati
 - [ ] Vision: bisa klasifikasi dummy vs riil dengan akurasi memadai (offline test)
 - [ ] Movement: robot bisa jalan lurus, belok, gripper berfungsi
+- [ ] Movement: 4 sensor ultrasonik HC-SR04 terbaca & obstacle reflex aktif (< 8 cm)
 - [ ] Integration: pipeline vision → decision → movement tersambung
 - [ ] Full end-to-end run pertama berhasil (walau belum sempurna)
 - [ ] Robustness: robot punya failsafe untuk kegagalan umum
@@ -101,9 +120,10 @@ Sesuaikan jumlah minggu dengan deadline kompetisi kalian. Movement diberi start 
 
 ---
 
-## 5. Catatan Manajemen Risiko
+## 6. Catatan Manajemen Risiko
 
 - **Movement** paling bergantung pada hardware fisik → prioritaskan akses ke robot untuk role ini di minggu-minggu awal.
+- **Ultrasonik HC-SR04** rentan terhadap crosstalk jika 4 sensor ditrigger bersamaan → gunakan pola trigger bergiliran dengan jeda ≥ 20ms. Validasi juga pada permukaan dengan sudut ekstrem (lantai bertekstur, objek tipis) karena ultrasonik lebih sensitif terhadap sudut pantulan dibanding ToF.
 - **Vision** butuh banyak data uji realistis → mulai kumpulkan foto/video kondisi arena sedini mungkin, jangan tunggu robot jadi.
 - **Integration** akan menjadi titik debugging tersibuk di minggu 5–8 → alokasikan waktu ekstra & komunikasi intens dengan dua role lain.
 - Sisakan minimal 1 minggu buffer sebelum deadline untuk kejutan teknis (servo rusak, baterai drop, dsb — ini ranah tim elektrik tapi berdampak ke testing software).

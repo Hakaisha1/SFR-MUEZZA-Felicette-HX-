@@ -23,7 +23,7 @@ Agent Vision bertanggung jawab atas seluruh pemrosesan kamera dan pendeteksian t
 
 ## Kontrak Output (Wajib Dipatuhi)
 
-Output Vision **harus** selalu dalam format JSON berikut. Hubungi Integration sebelum mengubah format ini.
+Output Vision **harus** selalu dalam format JSON berikut. Format ini juga terdokumentasi di [`data_contract.json`](../data_contract.json) — file tersebut adalah **sumber kebenaran tunggal**. Hubungi Integration sebelum mengubah format ini.
 
 ```json
 {
@@ -61,3 +61,5 @@ Kriteria pembeda **dummy vs korban riil** (sesuaikan dengan kondisi arena lomba)
 ## Kontak Tim
 - **Integration**: Hubungi sebelum mengubah format output JSON — perubahan ini langsung merusak state machine.
 - **Movement**: Tidak ada kontak langsung; semua dilewatkan via Integration.
+
+> ⚠️ Sebelum mengubah format output JSON, ikuti **prosedur perubahan kontrak** di [`data_contract.json`](../data_contract.json).

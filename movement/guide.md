@@ -2,6 +2,8 @@
 
 Panduan teknis pengembangan untuk folder `/movement`. Baca `agent.md` terlebih dahulu sebelum dokumen ini.
 
+> 📋 **Kontrak Data**: Format payload UART command (RPi5→STM32) dan telemetri (STM32→RPi5) didefinisikan di [`data_contract.json`](../data_contract.json). Pastikan struct packing/unpacking sesuai dengan kontrak tersebut.
+
 ---
 
 ## Setup Environment
@@ -127,6 +129,71 @@ HAL_UART_Receive(&huart1, buffer_rx, panjang_respons, 10);
 
 ---
 
+## Driver Ultrasonik HC-SR04 (4 Sensor, Timer Input-Capture)
+
+STM32F405 membaca 4 sensor HC-SR04 menggunakan **Timer Input-Capture** pada pin ECHO. Setiap siklus, sensor di-trigger satu per satu secara bergiliran dengan jeda ≥ 20ms untuk menghindari crosstalk.
+
+### Prinsip Kerja
+```
+TRIG (10µs pulse) → Sensor pancarkan gelombang → ECHO HIGH selama t → STM32 ukur lebar ECHO
+Jarak (mm) = (t_us × 343) / 2000       // t dalam mikrosekond, kecepatan suara 343 m/s
+```
+
+### Konfigurasi CubeMX
+- Aktifkan 4 TIM channel (satu per sensor) dalam mode **Input Capture**
+- Set TIM prescaler agar resolusi = 1 µs (misal: `PSC = (SystemCoreClock / 1000000) - 1`)
+- Pin TRIG: output GPIO biasa (push-pull)
+- Pin ECHO: input capture channel TIM
+
+### Contoh Kode C — Baca Satu Sensor Bergiliran
+
+```c
+typedef enum { US_DEPAN = 0, US_BELAKANG, US_KIRI, US_KANAN } UltrasonicID;
+
+static volatile uint32_t echo_start[4] = {0};
+static volatile uint32_t echo_duration_us[4] = {0};
+static volatile uint16_t jarak_mm[4] = {9999}; // 9999 = tidak terdeteksi
+
+// Dipanggil dari ISR Input-Capture rising edge
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+    // Implementasi rising/falling edge sesuai channel masing-masing
+}
+
+// Konversi durasi ke jarak
+uint16_t hitung_jarak_mm(uint32_t durasi_us) {
+    // Jarak (mm) = (durasi_us * 343) / 2000
+    return (uint16_t)((durasi_us * 343UL) / 2000UL);
+}
+
+// Trigger bergiliran (dipanggil dari task FreeRTOS, periode 20ms per sensor)
+void trigger_ultrasonik(UltrasonicID id) {
+    GPIO_TypeDef *port = trig_ports[id];
+    uint16_t pin = trig_pins[id];
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
+    // Tunda 10 µs (gunakan DWT atau delay loop kalibrasi)
+    delay_us(10);
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+}
+```
+
+### Loop Utama Pembacaan (FreeRTOS Task)
+
+```c
+void UltrasonicTask(void *argument) {
+    uint8_t idx = 0;
+    for (;;) {
+        trigger_ultrasonik((UltrasonicID)idx);
+        osDelay(25); // Tunggu 25ms: cukup untuk echo max ~4m + buffer
+        jarak_mm[idx] = hitung_jarak_mm(echo_duration_us[idx]);
+        idx = (idx + 1) % 4; // Gilir ke sensor berikutnya
+    }
+}
+```
+
+> ⚠️ Jangan trigger semua 4 sensor secara bersamaan — gelombang ultrasonik dari satu sensor bisa ditangkap sensor lain (crosstalk), menghasilkan jarak yang salah.
+
+---
+
 ## Failsafe di STM32
 
 ```c
@@ -144,8 +211,8 @@ void cek_watchdog_uart() {
 }
 
 void cek_obstacle_reflex() {
-    uint16_t tof_depan = baca_tof(TOF_DEPAN);
-    if (tof_depan < 80) { // < 8 cm
+    uint16_t us_depan = baca_ultrasonik(US_DEPAN);
+    if (us_depan < 80) { // < 8 cm (80 mm)
         hentikan_gerak_maju();
     }
 }
@@ -163,7 +230,7 @@ void cek_obstacle_reflex() {
 - [ ] IMU terbaca, roll & pitch akurat ≤ ±2°
 - [ ] Koreksi postur aktif saat kaki berada di medan miring
 - [ ] Gripper Dynamixel + MG90S berfungsi (buka/tutup terkontrol)
-- [ ] 4 sensor ToF VL53L1X terbaca via TCA9548A
+- [ ] 4 sensor ultrasonik HC-SR04 terbaca via STM32 TIM Input-Capture (trigger bergiliran)
 - [ ] Obstacle reflex aktif di < 8 cm (tanpa menunggu RPi5)
 - [ ] Watchdog UART 500ms aktif dan terbukti masuk EMERGENCY_STOP
 - [ ] Telemetri TLM_ROBOT_STATUS & TLM_SENSOR_DATA terkirim ke RPi5 stabil
