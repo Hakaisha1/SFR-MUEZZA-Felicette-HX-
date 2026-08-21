@@ -3,6 +3,8 @@
 Panduan teknis pengembangan untuk folder `/vision`. Baca `agent.md` terlebih dahulu sebelum dokumen ini.
 
 > 📋 **Kontrak Data**: Format output JSON Vision→Integration didefinisikan di [`data_contract.json`](../data_contract.json). Pastikan field, tipe data, dan nilai sentinel sesuai kontrak tersebut.
+> 📐 **State Machine**: Lihat [`state_machine.md`](../state_machine.md) untuk memahami bagaimana output Vision mempengaruhi transisi state robot.
+> 🔀 **Git Workflow**: Lihat [`flow.md`](../flow.md) untuk aturan branching dan PR.
 
 ---
 
@@ -136,12 +138,21 @@ python classifier.py --folder data/riil/
 
 ---
 
-## Checklist Pengembangan
+## Checklist Pengembangan (Sesuai Milestone)
 
+**M0 — Setup:**
 - [ ] Kamera terbaca stabil di RPi5 pada resolusi 640×480 @ 30 FPS
+
+**M1 — Fondasi:**
 - [ ] Deteksi target berjalan dengan hasil kotak pembatas (bounding box) akurat
 - [ ] Klasifikasi dummy vs riil mencapai akurasi ≥ 85% pada data uji offline
 - [ ] Estimasi jarak error ≤ ±5 cm pada rentang 15–80 cm
 - [ ] Output JSON terkirim ke Integration secara stabil tanpa putus
-- [ ] Performa: inferensi ≤ 100ms per frame (10 FPS minimum)
+
+**M2 — Tuning:**
 - [ ] Diuji dalam variasi pencahayaan: terang, redup, backlit
+- [ ] Performa: inferensi ≤ 100ms per frame (10 FPS minimum)
+
+**M3+ — Integrasi:**
+- [ ] Output Vision live digunakan oleh Integration untuk transisi state (SEARCHING → APPROACHING → CLASSIFYING)
+- [ ] Confidence threshold 0.75 terbukti efektif mengurangi false positive

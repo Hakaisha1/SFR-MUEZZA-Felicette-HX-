@@ -11,7 +11,7 @@
 Agent Integration adalah **jembatan** antara tim Vision dan tim Movement. Peran ini tidak boleh menulis logika vision murni atau kinematika murni — fokusnya adalah **orkestrasi**, **komunikasi**, dan **state machine**.
 
 1. **Protokol Komunikasi UART** — Implementasi dan pemeliharaan protokol RPi5 ↔ STM32 sesuai `protokol_komunikasi.json`.
-2. **State Machine Utama** — Mendefinisikan dan mengimplementasikan state robot (IDLE, WALKING, EVACUATING, EMERGENCY_STOP).
+2. **State Machine Utama** — Mengelola sub-state RPi5 (SEARCHING, APPROACHING, CLASSIFYING, GRIPPING, CARRYING, RELEASING) dan mengirimkan state STM32 (IDLE/WALKING/EVACUATING/EMERGENCY_STOP) via `CMD_STATE_CONTROL`. Lihat [`state_machine.md`](../state_machine.md) untuk detail dua-layer.
 3. **Data Pipeline** — Menerima output dari Vision, menerjemahkannya menjadi command yang dikirim ke Movement.
 4. **Watchdog & Failsafe** — Memastikan timeout handling bekerja; jika koneksi terputus, STM32 masuk EMERGENCY_STOP.
 5. **Testing End-to-End** — Memimpin sesi integrasi bersama Vision dan Movement.
@@ -47,12 +47,29 @@ Lihat [`data_contract.json`](../data_contract.json) sebagai **sumber kebenaran t
 
 ## State Machine Utama
 
+State machine menggunakan **dua layer** — lihat [`state_machine.md`](../state_machine.md) untuk penjelasan lengkap.
+
+**Layer STM32** (dikirim via `CMD_STATE_CONTROL` 0x12):
+| Nilai | State | Deskripsi |
+|---|---|---|
+| 0 | IDLE | Robot diam, servo aktif |
+| 1 | WALKING | Robot bergerak |
+| 2 | EVACUATING | Proses evakuasi (grip/bawa/lepas) |
+| 3 | EMERGENCY_STOP | Semua berhenti |
+
+**Layer RPi5** (sub-state di Integration):
 ```
-[IDLE] ──► [SCANNING/WALKING] ──► [APPROACHING] ──► [EVACUATING]
-              ▲                                           │
-              └───────────────────[DROP_ZONE]◄────────────┘
-                        ▲
-              [EMERGENCY_STOP] (dari mana saja)
+[SEARCHING] ──► [APPROACHING] ──► [CLASSIFYING] ──► [GRIPPING]
+     ▲              │                   │                │
+     │    obj hilang │      label=dummy  │     berhasil   │
+     └──────────────┘      └────────────┘                ▼
+     ▲                                             [CARRYING]
+     │                                                  │
+     └──────[ERROR_RETRY]◄── gagal          [RELEASING]◄┘
+     ▲                                          │
+     └──────────────────────────────────────────┘
+
+     [EMERGENCY_STOP] — dari state manapun (otomatis STM32)
 ```
 
 ## Kontak Tim

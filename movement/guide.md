@@ -3,6 +3,8 @@
 Panduan teknis pengembangan untuk folder `/movement`. Baca `agent.md` terlebih dahulu sebelum dokumen ini.
 
 > 📋 **Kontrak Data**: Format payload UART command (RPi5→STM32) dan telemetri (STM32→RPi5) didefinisikan di [`data_contract.json`](../data_contract.json). Pastikan struct packing/unpacking sesuai dengan kontrak tersebut.
+> 📐 **State Machine**: Lihat [`state_machine.md`](../state_machine.md) untuk memahami state apa saja yang STM32 terima via `CMD_STATE_CONTROL`.
+> 🔀 **Git Workflow**: Lihat [`flow.md`](../flow.md) untuk aturan branching dan PR.
 
 ---
 
@@ -220,17 +222,25 @@ void cek_obstacle_reflex() {
 
 ---
 
-## Checklist Pengembangan
+## Checklist Pengembangan (Sesuai Milestone)
 
+**M0 — Setup:**
+- [ ] PlatformIO bisa build & flash ke STM32
 - [ ] 1 servo Dynamixel bisa digerakkan & membaca posisi balikan
+
+**M1 — Fondasi:**
 - [ ] 18 servo kaki bisa digerakkan serentak via broadcast/sync write
 - [ ] Inverse Kinematics 1 kaki tervalidasi secara matematis (plot atau simulasi)
 - [ ] Tripod gait berjalan lurus di lantai datar
+- [ ] 4 sensor ultrasonik HC-SR04 terbaca via STM32 TIM Input-Capture (trigger bergiliran)
+
+**M2 — Movement Lanjutan:**
 - [ ] Gait belok kiri/kanan berfungsi
 - [ ] IMU terbaca, roll & pitch akurat ≤ ±2°
 - [ ] Koreksi postur aktif saat kaki berada di medan miring
 - [ ] Gripper Dynamixel + MG90S berfungsi (buka/tutup terkontrol)
-- [ ] 4 sensor ultrasonik HC-SR04 terbaca via STM32 TIM Input-Capture (trigger bergiliran)
 - [ ] Obstacle reflex aktif di < 8 cm (tanpa menunggu RPi5)
+
+**M3+ — Integrasi:**
 - [ ] Watchdog UART 500ms aktif dan terbukti masuk EMERGENCY_STOP
 - [ ] Telemetri TLM_ROBOT_STATUS & TLM_SENSOR_DATA terkirim ke RPi5 stabil

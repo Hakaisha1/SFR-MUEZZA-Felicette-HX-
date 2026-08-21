@@ -3,6 +3,8 @@
 Panduan teknis pengembangan untuk folder `/integration`. Baca `agent.md` terlebih dahulu sebelum dokumen ini.
 
 > 📋 **Kontrak Data**: Semua format data antar divisi didefinisikan di [`data_contract.json`](../data_contract.json). Gunakan file tersebut sebagai referensi utama saat implementasi parser, sender, atau listener.
+> 📐 **State Machine**: Lihat [`state_machine.md`](../state_machine.md) untuk diagram lengkap dua-layer (sub-state RPi5 + state STM32).
+> 🔀 **Git Workflow**: Lihat [`flow.md`](../flow.md) untuk aturan branching dan PR.
 
 ---
 
@@ -91,41 +93,66 @@ def baca_paket():
 
 ## Implementasi State Machine
 
+State machine menggunakan **dua layer** (lihat [`state_machine.md`](../state_machine.md)):
+- **Sub-state RPi5** — logika detail di `state_machine.py` (SEARCHING, APPROACHING, CLASSIFYING, GRIPPING, CARRYING, RELEASING, ERROR_RETRY)
+- **State STM32** — yang dikirim via `CMD_STATE_CONTROL` (`0x12`): IDLE(0), WALKING(1), EVACUATING(2), EMERGENCY_STOP(3)
+
 Gunakan pola berikut sebagai dasar `state_machine.py`:
 
 ```python
 from enum import Enum
 
-class State(Enum):
-    IDLE = 0
-    WALKING = 1
-    APPROACHING = 2
-    EVACUATING = 3
-    DROP_ZONE = 4
-    EMERGENCY_STOP = 5
+# Sub-state RPi5 (logika detail di sisi Integration)
+class SubState(Enum):
+    SEARCHING = 0
+    APPROACHING = 1
+    CLASSIFYING = 2
+    GRIPPING = 3
+    CARRYING = 4
+    RELEASING = 5
+    ERROR_RETRY = 6
+    EMERGENCY_STOP = 7
+
+# Mapping sub-state RPi5 → state STM32 (dikirim via CMD 0x12)
+STM32_STATE_MAP = {
+    SubState.SEARCHING:      1,  # WALKING
+    SubState.APPROACHING:    1,  # WALKING
+    SubState.CLASSIFYING:    0,  # IDLE
+    SubState.GRIPPING:       2,  # EVACUATING
+    SubState.CARRYING:       2,  # EVACUATING
+    SubState.RELEASING:      2,  # EVACUATING
+    SubState.ERROR_RETRY:    0,  # IDLE
+    SubState.EMERGENCY_STOP: 3,  # EMERGENCY_STOP
+}
 
 class StateMachine:
     def __init__(self):
-        self.state = State.IDLE
+        self.state = SubState.SEARCHING
 
     def update(self, data_vision, data_telemetry):
         """Dipanggil setiap loop. Return command untuk dikirim ke STM32."""
         if data_telemetry.get('hardware_error'):
-            self.state = State.EMERGENCY_STOP
-            return self._command_stop()
+            self.state = SubState.EMERGENCY_STOP
+            return self._command_state(3)
 
-        if self.state == State.IDLE:
-            self.state = State.WALKING
-        elif self.state == State.WALKING:
+        if self.state == SubState.SEARCHING:
             if data_vision['label'] in ('dummy', 'riil') and data_vision['confidence'] > 0.75:
-                self.state = State.APPROACHING
-        elif self.state == State.APPROACHING:
+                self.state = SubState.APPROACHING
+        elif self.state == SubState.APPROACHING:
             if data_vision['jarak_estimasi_cm'] < 15:
-                self.state = State.EVACUATING
-        # ... tambahkan transisi lainnya
+                self.state = SubState.CLASSIFYING
+                return self._command_state(0)  # IDLE — robot berhenti untuk klasifikasi
+        elif self.state == SubState.CLASSIFYING:
+            if data_vision['label'] == 'dummy':
+                self.state = SubState.SEARCHING
+                return self._command_state(1)  # WALKING
+            elif data_vision['label'] == 'riil':
+                self.state = SubState.GRIPPING
+                return self._command_state(2)  # EVACUATING
+        # ... tambahkan transisi GRIPPING → CARRYING → RELEASING
 
-    def _command_stop(self):
-        return {'msg_id': 0x12, 'state_target': 3}
+    def _command_state(self, state_target: int):
+        return {'msg_id': 0x12, 'state_target': state_target}
 ```
 
 ---
@@ -153,11 +180,20 @@ while True:
 
 ---
 
-## Checklist Integrasi Bertahap
+## Checklist Integrasi Bertahap (Sesuai Milestone)
 
+**M0 — Setup:**
 - [ ] Skeleton UART dapat kirim dan terima data dummy tanpa error
 - [ ] Checksum berfungsi — paket korup berhasil dideteksi dan diabaikan
+
+**M1 — Fondasi:**
+- [ ] State machine skeleton: transisi SEARCHING → APPROACHING berjalan dengan data placeholder
 - [ ] Watchdog terbukti aktif: cabut kabel UART → robot berhenti dalam 500ms
-- [ ] State machine IDLE → WALKING → APPROACHING tersambung ke output vision live
-- [ ] State machine EVACUATING → DROP_ZONE berjalan end-to-end
-- [ ] Full pipeline: deteksi korban → dekati → grip → letakkan di zona drop
+
+**M3 — Integrasi Awal:**
+- [ ] Vision output live tersambung ke state machine RPi5
+- [ ] Command asli terkirim ke STM32, robot bergerak sesuai sub-state
+
+**M4 — Full Pipeline:**
+- [ ] Full pipeline: SEARCHING → APPROACHING → CLASSIFYING → GRIPPING → CARRYING → RELEASING berjalan end-to-end
+- [ ] Telemetri `TLM_ROBOT_STATUS` & `TLM_SENSOR_DATA` stabil sepanjang full run
