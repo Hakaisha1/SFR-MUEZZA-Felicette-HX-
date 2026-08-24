@@ -22,14 +22,14 @@ TripodGaitGenerator::TripodGaitGenerator(const KinematicsSolver& solver, const G
       vy_scale_(0.0f) {
 
     // Konfigurasi tripod:
-    // Group 0 (Tripod A): 0 (RF), 3 (LM), 4 (RB)
-    // Group 1 (Tripod B): 1 (LF), 2 (RM), 5 (LB)
-    leg_group_assignment_[0] = 0; // RF
-    leg_group_assignment_[1] = 1; // LF
-    leg_group_assignment_[2] = 1; // RM
-    leg_group_assignment_[3] = 0; // LM
-    leg_group_assignment_[4] = 0; // RB
-    leg_group_assignment_[5] = 1; // LB
+    // Group 0 (Tripod A): LF (1), RM (2), LB (5)
+    // Group 1 (Tripod B): RF (0), LM (3), RB (4)
+    leg_group_assignment_[0] = 1; // RF (Group 1)
+    leg_group_assignment_[1] = 0; // LF (Group 0)
+    leg_group_assignment_[2] = 0; // RM (Group 0)
+    leg_group_assignment_[3] = 1; // LM (Group 1)
+    leg_group_assignment_[4] = 1; // RB (Group 1)
+    leg_group_assignment_[5] = 0; // LB (Group 0)
 
     init();
 }
