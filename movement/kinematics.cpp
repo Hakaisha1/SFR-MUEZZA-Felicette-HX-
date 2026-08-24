@@ -114,8 +114,10 @@ IKResult KinematicsSolver::compute_leg_ik_local(const Vector3D& target, LegJoint
     cos_gamma = std::fmax(-1.0f, std::fmin(1.0f, cos_gamma));
     float gamma_rad = std::acos(cos_gamma); // Sudut interior antara femur dan tibia
 
-    // Sudut servo tibia relatif terhadap ekstensi garis femur (defleksi)
-    // 0 deg = lurus dengan femur, negatif = menekuk ke bawah
+    // Penting!
+    // Sudut servo tibia relatif terhadap ekstensi garis femur (defleksi).
+    // 0 deg = lurus dengan femur, negatif = menekuk ke bawah.
+    // Nilai ini sangat bergantung pada posisi offset 0 derajat servo fisik saat perakitan!
     float theta3_deg = (gamma_rad * RAD_TO_DEG) - 180.0f;
 
     // 5. Hitung Sudut Femur (theta2: Pitch)
@@ -128,7 +130,7 @@ IKResult KinematicsSolver::compute_leg_ik_local(const Vector3D& target, LegJoint
     cos_beta = std::fmax(-1.0f, std::fmin(1.0f, cos_beta));
     float beta_rad = std::acos(cos_beta);
 
-    float theta2_rad = alpha_rad + beta_rad;
+    float theta2_rad = alpha_rad - beta_rad;
     float theta2_deg = theta2_rad * RAD_TO_DEG;
 
     // 6. Cek Batasan Sudut Fisik Servo
