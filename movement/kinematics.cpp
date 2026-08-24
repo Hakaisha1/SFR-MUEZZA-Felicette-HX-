@@ -117,7 +117,7 @@ IKResult KinematicsSolver::compute_leg_ik_local(const Vector3D& target, LegJoint
     // Penting!
     // Sudut servo tibia relatif terhadap ekstensi garis femur (defleksi).
     // 0 deg = lurus dengan femur, negatif = menekuk ke bawah.
-    // Nilai ini sangat bergantung pada posisi offset 0 derajat servo fisik saat perakitan!
+    // Nilai ini sangat bergantung pada posisi offset 0 derajat servo fisik 
     float theta3_deg = (gamma_rad * RAD_TO_DEG) - 180.0f;
 
     // 5. Hitung Sudut Femur (theta2: Pitch)
