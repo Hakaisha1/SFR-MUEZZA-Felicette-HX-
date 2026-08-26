@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# Data / Images
+# Data / Images / Docs
+data/*
+!data/.gitkeep
+*.pdf
+
+# Model weights
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
+*.tflite
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
