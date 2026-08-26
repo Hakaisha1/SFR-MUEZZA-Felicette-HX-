@@ -82,7 +82,8 @@ def main():
 
     uart = UARTDriver(ser)
     sm = StateMachine()
-    vision = VisionListener()
+    vision = VisionListener(use_socket=True)
+    vision.start()
 
     logger.info("State awal: %s (STM32: %s)", sm.state.name, sm.stm32_state.name)
     logger.info("Loop interval: %.0f ms (%.0f Hz)", INTERVAL_LOOP_S * 1000, 1 / INTERVAL_LOOP_S)
@@ -154,6 +155,9 @@ def main():
         logger.info("=" * 50)
 
     finally:
+        # Hentikan socket server Vision
+        vision.stop()
+
         # Tutup serial jika bukan dummy
         if hasattr(ser, 'close'):
             try:
