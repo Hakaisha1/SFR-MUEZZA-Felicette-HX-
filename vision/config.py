@@ -82,7 +82,7 @@ DISTANCE_MAX_CM = 500.0
 # Mode publisher:
 #   "stdout"  → print JSON ke terminal (default, untuk testing mandiri)
 #   "socket"  → kirim via TCP socket ke Integration
-PUBLISHER_MODE = "stdout"
+PUBLISHER_MODE = "socket"
 
 # Konfigurasi socket (hanya dipakai jika PUBLISHER_MODE = "socket")
 PUBLISHER_HOST = "localhost"
