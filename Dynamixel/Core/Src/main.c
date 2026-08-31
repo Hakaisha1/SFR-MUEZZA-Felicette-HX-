@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
+  * @brief          : Main program body for Robot SAR Hexapod Controller
   ******************************************************************************
   * @attention
   *
@@ -21,9 +21,12 @@
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
-/* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "dynamixel.h"
+#include "dynamixel_config.h"
+#include "uart_protocol.h"
+#include "kinematics.h"
+#include "gait_planner.h"
 #include "usbd_cdc_if.h"
 #include <stdio.h>
 #include <string.h>
@@ -51,7 +54,25 @@ TIM_HandleTypeDef htim11;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+/* Buffer 1 byte penerimaan UART interrupt */
+uint8_t rx_byte_buffer;
 
+/* Subsystem state & gait variables */
+static GaitPlanner_t gait_planner;
+static Dxl_SyncWriteData_t sync_data[18];
+static RobotState_t current_robot_state = STATE_IDLE;
+
+static float current_vx = 0.0f;
+static float current_vy = 0.0f;
+static float current_vyaw = 0.0f;
+
+static float manipulator_arm1 = 0.0f;
+static float manipulator_arm2 = 0.0f;
+static uint8_t manipulator_gripper = 0;
+
+static uint32_t last_gait_tick = 0;
+static uint32_t last_telemetry_tick = 0;
+static uint32_t last_cdc_tick = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -66,6 +87,88 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/* ========================================================================== */
+/*                   IMPLEMENTASI PROTOKOL UART & CALLBACK                    */
+/* ========================================================================== */
+
+/**
+ * @brief Callback saat menerima perintah gerak omnidirectional dari RPi5 (CMD 0x10)
+ */
+void UartProtocol_OnCmdGerak(const CmdGerakOmni_t* cmd) {
+    current_vx = cmd->kecepatan_x;
+    current_vy = cmd->kecepatan_y;
+    current_vyaw = cmd->kecepatan_yaw;
+
+    // Suplai parameter ke Gait Planner
+    gait_planner.stride_length = current_vx * 50.0f;
+    gait_planner.stride_width  = current_vy * 30.0f;
+}
+
+/**
+ * @brief Callback saat menerima perintah perubahan state dari RPi5 (CMD 0x12)
+ */
+void UartProtocol_OnCmdStateControl(const CmdStateControl_t* cmd) {
+    current_robot_state = (RobotState_t)cmd->state_target;
+
+    if (current_robot_state == STATE_EMERGENCY_STOP) {
+        // Hentikan kecepatan seketika
+        current_vx = 0.0f;
+        current_vy = 0.0f;
+        current_vyaw = 0.0f;
+        gait_planner.stride_length = 0.0f;
+        gait_planner.stride_width = 0.0f;
+
+        // Matikan torsi servo untuk keselamatan
+        for (int i = 0; i < NUM_LEGS; i++) {
+            Dxl_TorqueEnable(DXL_ID_MAP[i].coxa, false);
+            Dxl_TorqueEnable(DXL_ID_MAP[i].femur, false);
+            Dxl_TorqueEnable(DXL_ID_MAP[i].tibia, false);
+        }
+    } else if (current_robot_state == STATE_WALKING || current_robot_state == STATE_IDLE) {
+        // Aktifkan torsi seluruh servo
+        for (int i = 0; i < NUM_LEGS; i++) {
+            Dxl_TorqueEnable(DXL_ID_MAP[i].coxa, true);
+            Dxl_TorqueEnable(DXL_ID_MAP[i].femur, true);
+            Dxl_TorqueEnable(DXL_ID_MAP[i].tibia, true);
+        }
+    }
+}
+
+/**
+ * @brief Callback saat menerima perintah manipulator dari RPi5 (CMD 0x11)
+ */
+void UartProtocol_OnCmdManipulator(const CmdManipulator_t* cmd) {
+    manipulator_arm1 = cmd->sudut_lengan_1;
+    manipulator_arm2 = cmd->sudut_lengan_2;
+    manipulator_gripper = cmd->status_gripper;
+
+    // Kontrol servo gripper jika terpasang
+    if (DXL_ID_GRIPPER != 0) {
+        uint16_t grip_pos = (manipulator_gripper == 0) ? 300 : 700;
+        Dxl_SetGoalPosition(DXL_ID_GRIPPER, grip_pos);
+    }
+}
+
+/**
+ * @brief Implementasi transmisi hardware UART untuk protokol telemetri
+ */
+void UartProtocol_TransmitBytes(uint8_t* data, uint16_t length) {
+    HAL_UART_Transmit(&huart1, data, length, 100);
+}
+
+/**
+ * @brief Callback interupsi UART RX saat menerima byte dari RPi5
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+        // 1. Kirim byte ke mesin parser non-blocking
+        UartProtocol_ParseByte(rx_byte_buffer);
+
+        // 2. Aktifkan kembali interupsi penerimaan byte berikutnya
+        HAL_UART_Receive_IT(huart, &rx_byte_buffer, 1);
+    }
+}
 
 /* USER CODE END 0 */
 
@@ -102,31 +205,113 @@ int main(void)
   MX_TIM11_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
+
   /* USER CODE BEGIN 2 */
+  // 1. Inisialisasi Driver Dynamixel pada USART1
   Dxl_Init(&huart1);
+
+  // 2. Aktifkan torsi untuk seluruh 18 servo kaki
+  for (int i = 0; i < NUM_LEGS; i++) {
+      Dxl_TorqueEnable(DXL_ID_MAP[i].coxa, true);
+      Dxl_TorqueEnable(DXL_ID_MAP[i].femur, true);
+      Dxl_TorqueEnable(DXL_ID_MAP[i].tibia, true);
+  }
+
+  // 3. Inisialisasi Tripod Gait Planner
+  Gait_Init(&gait_planner);
+
+  // 4. Mulai interupsi UART RX untuk menerima command dari RPi5
+  HAL_UART_Receive_IT(&huart1, &rx_byte_buffer, 1);
+
+  last_gait_tick = HAL_GetTick();
+  last_telemetry_tick = HAL_GetTick();
+  last_cdc_tick = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    char buf[100];
-    sprintf(buf, "\r\n--- Scanning Dynamixel IDs (0-253) ---\r\n");
-    CDC_Transmit_FS((uint8_t*)buf, strlen(buf));
-    HAL_Delay(100);
+    uint32_t now = HAL_GetTick();
 
-    for (uint8_t id = 0; id <= 253; id++) {
-        if (Dxl_Ping(id)) {
-            sprintf(buf, "=> Found Dynamixel ID: %d\r\n", id);
-            CDC_Transmit_FS((uint8_t*)buf, strlen(buf));
-            HAL_Delay(50); // Delay kecil agar buffer USB tidak penuh
+    // ------------------------------------------------------------------------
+    // Loop 1: Gait Engine & Kinematics Update (50 Hz / Interval 20ms)
+    // ------------------------------------------------------------------------
+    if ((now - last_gait_tick) >= 20) {
+        float dt = (float)(now - last_gait_tick);
+        last_gait_tick = now;
+
+        if (current_robot_state == STATE_WALKING || current_robot_state == STATE_EVACUATING) {
+            Gait_Update(&gait_planner, dt);
+
+            uint8_t sync_idx = 0;
+            for (int i = 0; i < NUM_LEGS; i++) {
+                JointAngles_t angles;
+                if (CalculateIK(gait_planner.leg_targets[i], &angles)) {
+                    // Coxa
+                    sync_data[sync_idx].id = DXL_ID_MAP[i].coxa;
+                    sync_data[sync_idx].position = DegToDxl(angles.coxa_angle);
+                    sync_idx++;
+
+                    // Femur
+                    sync_data[sync_idx].id = DXL_ID_MAP[i].femur;
+                    sync_data[sync_idx].position = DegToDxl(angles.femur_angle);
+                    sync_idx++;
+
+                    // Tibia
+                    sync_data[sync_idx].id = DXL_ID_MAP[i].tibia;
+                    sync_data[sync_idx].position = DegToDxl(angles.tibia_angle);
+                    sync_idx++;
+                }
+            }
+
+            // Kirim SyncWrite ke 18 servo sekaligus via USART1
+            if (sync_idx == 18) {
+                Dxl_SyncWritePosition(sync_data, 18);
+            }
         }
     }
-    
-    sprintf(buf, "Scan Complete.\r\n");
-    CDC_Transmit_FS((uint8_t*)buf, strlen(buf));
-    
-    HAL_Delay(3000); // Scan lagi setiap 3 detik
+
+    // ------------------------------------------------------------------------
+    // Loop 2: Pengiriman Telemetri ke RPi5 (20 Hz / Interval 50ms)
+    // ------------------------------------------------------------------------
+    if ((now - last_telemetry_tick) >= 50) {
+        last_telemetry_tick = now;
+
+        // 1. Kirim Status Robot
+        TlmRobotStatus_t status = {0};
+        status.state_sekarang = (uint8_t)current_robot_state;
+        status.tegangan_baterai = 11.8f;
+        status.status_hardware_error = 0;
+        UartProtocol_SendStatus(&status);
+
+        // 2. Kirim Sensor Data
+        TlmSensorData_t sensor = {0};
+        sensor.us_depan_mm = 1500;
+        sensor.us_belakang_mm = 2000;
+        sensor.us_kiri_mm = 9999;
+        sensor.us_kanan_mm = 9999;
+        sensor.imu_roll = 0.0f;
+        sensor.imu_pitch = 0.0f;
+        UartProtocol_SendSensor(&sensor);
+    }
+
+    // ------------------------------------------------------------------------
+    // Loop 3: Monitor Diagnostik Virtual COM Port USB (1 Hz / Interval 1000ms)
+    // ------------------------------------------------------------------------
+    if ((now - last_cdc_tick) >= 1000) {
+        last_cdc_tick = now;
+
+        char dbg[128];
+        const char *state_str = "IDLE";
+        if (current_robot_state == STATE_WALKING) state_str = "WALKING";
+        else if (current_robot_state == STATE_EVACUATING) state_str = "EVACUATING";
+        else if (current_robot_state == STATE_EMERGENCY_STOP) state_str = "ESTOP";
+
+        snprintf(dbg, sizeof(dbg), "[SAR-STM32] State: %s | Vx: %.2f Vy: %.2f | Batt: 11.8V\r\n",
+                 state_str, current_vx, current_vy);
+        CDC_Transmit_FS((uint8_t*)dbg, strlen(dbg));
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
