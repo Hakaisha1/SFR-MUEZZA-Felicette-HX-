@@ -132,6 +132,30 @@ class PixyUSB:
 
         return blocks
 
+    def set_lamp(self, upper: int, lower: int) -> bool:
+        """
+        Menyalakan/mematikan lampu LED PixyCam.
+
+        Args:
+            upper: 1 nyalakan 2 LED putih atas (flash), 0 mati.
+            lower: 1 nyalakan LED RGB bawah, 0 mati.
+        """
+        if not self._connected or self._pixy is None:
+            return False
+
+        try:
+            try:
+                from pixycamev2 import pixy as pixy_module
+            except ImportError:
+                import pixy as pixy_module
+
+            # panggil fungsi native pixy.set_lamp(upper, lower)
+            pixy_module.set_lamp(upper, lower)
+            return True
+        except Exception as e:
+            logger.warning("set_lamp error: %s", e)
+            return False
+
     @property
     def is_connected(self) -> bool:
         return self._connected
@@ -165,6 +189,10 @@ class DummyPixy:
     def set_blocks(self, blocks: list):
         """Set blocks untuk simulasi. Menerima list of PixyBlock."""
         self._blocks = blocks
+
+    def set_lamp(self, upper: int, lower: int) -> bool:
+        logger.info("DummyPixy: set_lamp(upper=%d, lower=%d)", upper, lower)
+        return True
 
     @property
     def is_connected(self) -> bool:

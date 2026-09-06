@@ -50,6 +50,10 @@ def parse_args():
         "--dummy", action="store_true",
         help="Jalankan tanpa hardware PixyCam (mode simulasi)",
     )
+    parser.add_argument(
+        "--lamp", action="store_true",
+        help="Nyalakan lampu flash LED PixyCam2 saat jalan",
+    )
     # Legacy compatibility: ignore --no-display, --camera, --image
     parser.add_argument("--no-display", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)
@@ -202,6 +206,14 @@ def main():
             logger.error("")
             logger.error("Untuk testing tanpa hardware, gunakan: python main.py --dummy")
             sys.exit(1)
+
+    # Nyalakan lampu flash jika argumen --lamp digunakan
+    if args.lamp:
+        logger.info("Menyalakan lampu flash PixyCam2 (--lamp)")
+        pixy.set_lamp(1, 0)
+    else:
+        # Pastikan lampu mati jika tidak diaktifkan
+        pixy.set_lamp(0, 0)
 
     # Inisialisasi komponen
     detector = Detector(pixy_interface=pixy)
