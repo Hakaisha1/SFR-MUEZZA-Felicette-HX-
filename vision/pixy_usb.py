@@ -45,6 +45,7 @@ class PixyUSB:
     def __init__(self):
         self._pixy = None
         self._connected = False
+        self._block_array = None
 
     def init(self) -> bool:
         """
@@ -73,6 +74,10 @@ class PixyUSB:
             if ret < 0:
                 logger.error("pixy.init() gagal dengan kode: %d", ret)
                 return False
+            
+            # Alokasikan BlockArray (maksimal 100 block) sesuai SWIG API
+            self._block_array = self._pixy.BlockArray(100)
+            
             self._connected = True
             logger.info("PixyCam2 terhubung via USB (init OK)")
             return True
@@ -91,20 +96,14 @@ class PixyUSB:
         Returns:
             List of PixyBlock.
         """
-        if not self._connected or self._pixy is None:
+        if not self._connected or self._pixy is None or self._block_array is None:
             return []
 
         try:
-            # Native pixy module menggunakan ctypes BlockArray
-            from pixycamev2 import pixy as pixy_module
-            count = pixy_module.ccc_get_blocks(max_blocks, sigmap)
-        except ImportError:
-            try:
-                import pixy as pixy_module
-                count = pixy_module.ccc_get_blocks(max_blocks, sigmap)
-            except Exception as e:
-                logger.warning("ccc_get_blocks error: %s", e)
-                return []
+            # Sesuai SWIG API Pixy2: ccc_get_blocks(max_blocks, block_array)
+            # sigmap diatur lewat parameter fungsi lain jika perlu, tapi
+            # default-nya ccc_get_blocks mengambil semua yg terdeteksi.
+            count = self._pixy.ccc_get_blocks(max_blocks, self._block_array)
         except Exception as e:
             logger.warning("ccc_get_blocks error: %s", e)
             return []
@@ -115,7 +114,7 @@ class PixyUSB:
         blocks = []
         for i in range(count):
             try:
-                block = pixy_module.ccc_blocks[i]
+                block = self._block_array[i]
                 blocks.append(PixyBlock(
                     sig=block.m_signature,
                     x_center=block.m_x,
