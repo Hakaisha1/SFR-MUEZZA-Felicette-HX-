@@ -1,149 +1,112 @@
 """
-test_classifier.py — Unit test untuk modul classifier.
+test_classifier.py — Unit test untuk modul classifier.py (PixyCam mode).
 
-Menguji klasifikasi warna Korban Asli (Oranye) vs Dummy (Abu-abu).
-
-Jalankan: python -m pytest tests/test_classifier.py -v
+Menguji:
+  - Classifier pass-through dari PixyCam signature
+  - ClassificationVoter: voting mayoritas multi-frame
 """
 
+import unittest
 import sys
 import os
 
-import cv2
-import numpy as np
-import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from classifier import Classifier, ClassificationResult, ClassificationVoter
 
 
-def create_orange_object_frame(size=200):
-    """Buat frame dengan objek warna oranye (Korban Asli)."""
-    frame = np.zeros((size, size, 3), dtype=np.uint8)
-    orange = (0, 140, 255)
-    cv2.rectangle(frame, (50, 50), (150, 150), orange, -1)
-    return frame
+class TestClassifier(unittest.TestCase):
+    """Test Classifier PixyCam mode."""
 
+    def setUp(self):
+        self.cls = Classifier()
 
-def create_grey_object_frame(size=200):
-    """Buat frame dengan objek warna abu-abu (Dummy)."""
-    frame = np.zeros((size, size, 3), dtype=np.uint8)
-    grey = (128, 128, 128)
-    cv2.rectangle(frame, (50, 50), (150, 150), grey, -1)
-    return frame
+    def test_classify_riil(self):
+        """Label 'riil' di-pass-through dengan benar."""
+        result = self.cls.classify("riil", 0.85)
+        self.assertEqual(result.label, "riil")
+        self.assertAlmostEqual(result.confidence, 0.85, places=2)
 
-
-class TestClassifier:
-    """Test suite untuk Classifier warna Oranye vs Abu-abu."""
-
-    def setup_method(self):
-        self.classifier = Classifier()
-
-    def test_classify_orange_as_riil(self):
-        """Objek warna oranye -> label 'riil'."""
-        frame = create_orange_object_frame()
-        result = self.classifier.classify(frame, (50, 50, 100, 100))
-
-        assert isinstance(result, ClassificationResult)
-        assert result.label == "riil"
-        assert result.confidence >= 0.70
-
-    def test_classify_grey_as_dummy(self):
-        """Objek warna abu-abu -> label 'dummy'."""
-        frame = create_grey_object_frame()
-        result = self.classifier.classify(frame, (50, 50, 100, 100))
-
-        assert isinstance(result, ClassificationResult)
-        assert result.label == "dummy"
-        assert result.confidence >= 0.70
+    def test_classify_dummy(self):
+        """Label 'dummy' di-pass-through dengan benar."""
+        result = self.cls.classify("dummy", 0.78)
+        self.assertEqual(result.label, "dummy")
+        self.assertAlmostEqual(result.confidence, 0.78, places=2)
 
     def test_classify_returns_scores(self):
-        """Hasil klasifikasi menyertakan skor warna."""
-        frame = create_orange_object_frame()
-        result = self.classifier.classify(frame, (50, 50, 100, 100))
-
-        assert "orange_ratio" in result.scores
-        assert "grey_ratio" in result.scores
-        assert "mean_saturation" in result.scores
+        """Hasil klasifikasi memiliki scores dict."""
+        result = self.cls.classify("riil", 0.90)
+        self.assertIn("source", result.scores)
+        self.assertEqual(result.scores["source"], "pixycam_signature")
 
     def test_confidence_in_valid_range(self):
-        """Confidence harus antara 0.0 dan 1.0."""
-        frame = create_orange_object_frame()
-        result = self.classifier.classify(frame, (50, 50, 100, 100))
-        assert 0.0 <= result.confidence <= 1.0
-
-    def test_invalid_bbox_returns_tidak_ada(self):
-        """Bounding box tidak valid (w=0) -> label 'tidak_ada'."""
-        frame = create_orange_object_frame()
-        result = self.classifier.classify(frame, (100, 100, 0, 0))
-        assert result.label == "tidak_ada"
-
-    def test_bbox_out_of_bounds_clamped(self):
-        """Bounding box di luar frame -> di-clamp, tidak error."""
-        frame = create_orange_object_frame()
-        result = self.classifier.classify(frame, (-50, -50, 300, 300))
-        assert result.label in ["dummy", "riil", "tidak_ada"]
+        """Confidence tetap dalam rentang 0.0–1.0."""
+        result = self.cls.classify("riil", 0.999)
+        self.assertGreaterEqual(result.confidence, 0.0)
+        self.assertLessEqual(result.confidence, 1.0)
 
 
-class TestClassificationVoter:
-    """Test suite untuk ClassificationVoter (voting multi-frame)."""
+class TestClassificationVoter(unittest.TestCase):
+    """Test voting mayoritas multi-frame."""
 
     def test_voter_not_ready_with_fewer_frames(self):
-        voter = ClassificationVoter(required_frames=5)
-        voter.add_vote(ClassificationResult("dummy", 0.8, {}))
-        voter.add_vote(ClassificationResult("dummy", 0.7, {}))
-        assert not voter.is_ready()
-
-    def test_voter_ready_with_enough_frames(self):
-        voter = ClassificationVoter(required_frames=3)
-        for _ in range(3):
-            voter.add_vote(ClassificationResult("dummy", 0.8, {}))
-        assert voter.is_ready()
-
-    def test_voter_majority_dummy(self):
-        voter = ClassificationVoter(required_frames=5)
-        voter.add_vote(ClassificationResult("dummy", 0.9, {}))
-        voter.add_vote(ClassificationResult("dummy", 0.8, {}))
-        voter.add_vote(ClassificationResult("dummy", 0.7, {}))
-        voter.add_vote(ClassificationResult("riil", 0.6, {}))
-        voter.add_vote(ClassificationResult("riil", 0.5, {}))
-
-        verdict = voter.get_verdict()
-        assert verdict.label == "dummy"
-
-    def test_voter_majority_riil(self):
+        """Voter belum siap jika frame kurang dari required."""
         voter = ClassificationVoter(required_frames=5)
         voter.add_vote(ClassificationResult("riil", 0.9, {}))
-        voter.add_vote(ClassificationResult("riil", 0.8, {}))
-        voter.add_vote(ClassificationResult("riil", 0.7, {}))
-        voter.add_vote(ClassificationResult("dummy", 0.6, {}))
-        voter.add_vote(ClassificationResult("dummy", 0.5, {}))
+        self.assertFalse(voter.is_ready())
 
+    def test_voter_ready_with_enough_frames(self):
+        """Voter siap setelah cukup frame."""
+        voter = ClassificationVoter(required_frames=3)
+        for _ in range(3):
+            voter.add_vote(ClassificationResult("riil", 0.9, {}))
+        self.assertTrue(voter.is_ready())
+
+    def test_voter_majority_dummy(self):
+        """Mayoritas dummy → verdict dummy."""
+        voter = ClassificationVoter(required_frames=5)
+        for _ in range(3):
+            voter.add_vote(ClassificationResult("dummy", 0.8, {}))
+        for _ in range(2):
+            voter.add_vote(ClassificationResult("riil", 0.9, {}))
         verdict = voter.get_verdict()
-        assert verdict.label == "riil"
+        self.assertEqual(verdict.label, "dummy")
+
+    def test_voter_majority_riil(self):
+        """Mayoritas riil → verdict riil."""
+        voter = ClassificationVoter(required_frames=5)
+        for _ in range(4):
+            voter.add_vote(ClassificationResult("riil", 0.85, {}))
+        voter.add_vote(ClassificationResult("dummy", 0.7, {}))
+        verdict = voter.get_verdict()
+        self.assertEqual(verdict.label, "riil")
 
     def test_voter_tie_resolves_by_confidence(self):
+        """Seri → diputuskan berdasarkan rata-rata confidence."""
         voter = ClassificationVoter(required_frames=4)
-        voter.add_vote(ClassificationResult("dummy", 0.9, {}))
-        voter.add_vote(ClassificationResult("dummy", 0.8, {}))
-        voter.add_vote(ClassificationResult("riil", 0.3, {}))
-        voter.add_vote(ClassificationResult("riil", 0.2, {}))
-
+        voter.add_vote(ClassificationResult("riil", 0.95, {}))
+        voter.add_vote(ClassificationResult("riil", 0.90, {}))
+        voter.add_vote(ClassificationResult("dummy", 0.60, {}))
+        voter.add_vote(ClassificationResult("dummy", 0.65, {}))
         verdict = voter.get_verdict()
-        assert verdict.label == "dummy"
+        # avg riil = 0.925, avg dummy = 0.625 → riil menang
+        self.assertEqual(verdict.label, "riil")
 
     def test_voter_reset(self):
+        """Reset menghapus semua votes."""
         voter = ClassificationVoter(required_frames=3)
-        voter.add_vote(ClassificationResult("dummy", 0.8, {}))
+        for _ in range(3):
+            voter.add_vote(ClassificationResult("riil", 0.9, {}))
         voter.reset()
-        assert not voter.is_ready()
+        self.assertFalse(voter.is_ready())
 
     def test_voter_empty_verdict(self):
-        voter = ClassificationVoter(required_frames=3)
+        """Voter kosong → verdict 'tidak_ada'."""
+        voter = ClassificationVoter(required_frames=5)
         verdict = voter.get_verdict()
-        assert verdict.label == "tidak_ada"
+        self.assertEqual(verdict.label, "tidak_ada")
+        self.assertEqual(verdict.confidence, 0.0)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()

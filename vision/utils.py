@@ -1,23 +1,20 @@
 """
-utils.py — Utilitas umum untuk pipeline Vision.
+utils.py — Utilitas umum untuk pipeline Vision (PixyCam Mode).
 
 Berisi:
   - setup_logger: logging terformat
   - validate_output: validasi output sesuai kontrak data
-  - draw_overlay: gambar bounding box & info ke frame untuk debugging
+  - build_output: membangun dict output sesuai kontrak
+
+Catatan: Tidak ada lagi fungsi draw_overlay karena PixyCam
+tidak menyediakan frame gambar mentah. Semua debug dilakukan
+via log teks.
 """
 
 import logging
 import time
-import cv2
 
-from config import (
-    VALID_LABELS,
-    COLOR_BBOX_DUMMY,
-    COLOR_BBOX_RIIL,
-    COLOR_BBOX_UNKNOWN,
-    COLOR_TEXT,
-)
+from config import VALID_LABELS
 
 
 def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
@@ -120,104 +117,3 @@ def build_output(
         "jarak_estimasi_cm": round(float(jarak_estimasi_cm), 1),
         "timestamp_ms": int(time.time() * 1000),
     }
-
-
-def draw_overlay(
-    frame,
-    bbox: tuple = None,
-    label: str = "tidak_ada",
-    confidence: float = 0.0,
-    distance_cm: float = 0.0,
-    is_primary: bool = True,
-):
-    """
-    Menggambar satu bounding box dan informasi deteksi ke frame.
-    """
-    if bbox is None:
-        status_text = "Target: Tidak ada objek terdeteksi"
-        cv2.putText(
-            frame, status_text, (10, 25),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA,
-        )
-        return frame
-
-    # Pilih warna berdasarkan label
-    if label == "riil":
-        color = COLOR_BBOX_RIIL       # Hijau terang
-    elif label == "dummy":
-        color = COLOR_BBOX_DUMMY      # Oranye
-    else:
-        color = COLOR_BBOX_UNKNOWN
-
-    x, y, w, h = bbox
-    thickness = 3 if is_primary else 1
-
-    # Gambar bounding box
-    cv2.rectangle(frame, (x, y), (x + w, y + h), color, thickness)
-
-    # Label teks
-    tag = "[TARGET] " if is_primary and label == "riil" else ""
-    text_label = f"{tag}{label} ({confidence:.0%})"
-    text_dist = f"{distance_cm:.1f} cm"
-
-    # Background untuk teks
-    font_scale = 0.55 if is_primary else 0.45
-    (tw, th), _ = cv2.getTextSize(text_label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
-    cv2.rectangle(frame, (x, max(0, y - th - 8)), (x + tw + 4, max(th + 8, y)), color, -1)
-    cv2.putText(
-        frame, text_label, (x + 2, max(th + 2, y - 4)),
-        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0) if label == "riil" else COLOR_TEXT, 1, cv2.LINE_AA,
-    )
-
-    # Jarak di bawah bbox
-    cv2.putText(
-        frame, text_dist, (x + 2, min(frame.shape[0] - 5, y + h + 16)),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
-    )
-
-    return frame
-
-
-def draw_multiple_overlays(frame, objects_info: list, primary_index: int = 0):
-    """
-    Menggambar semua bounding box objek yang terdeteksi dalam frame.
-
-    Args:
-        frame: Frame OpenCV.
-        objects_info: List dict [{'bbox', 'label', 'confidence', 'dist', ...}].
-        primary_index: Index objek yang dipilih sebagai target utama.
-
-    Returns:
-        Frame dengan semua overlay.
-    """
-    if not objects_info:
-        return draw_overlay(frame)
-
-    # Gambar semua objek
-    for i, obj in enumerate(objects_info):
-        is_pri = (i == primary_index)
-        draw_overlay(
-            frame,
-            bbox=obj["bbox"],
-            label=obj["label"],
-            confidence=obj["confidence"],
-            distance_cm=obj["dist"],
-            is_primary=is_pri,
-        )
-
-    # Summary bar di bagian atas frame
-    pri_obj = objects_info[primary_index] if 0 <= primary_index < len(objects_info) else None
-    riil_count = sum(1 for o in objects_info if o["label"] == "riil")
-    dummy_count = sum(1 for o in objects_info if o["label"] == "dummy")
-
-    top_text = f"Deteksi: {len(objects_info)} obj (Riil: {riil_count}, Dummy: {dummy_count})"
-    if pri_obj:
-        top_text += f" | Target: {pri_obj['label'].upper()} ({pri_obj['dist']:.1f}cm)"
-
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], 28), (0, 0, 0), -1)
-    cv2.putText(
-        frame, top_text, (8, 20),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA,
-    )
-
-    return frame

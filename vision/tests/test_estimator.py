@@ -1,162 +1,130 @@
 """
-test_estimator.py — Unit test untuk modul estimator.
+test_estimator.py — Unit test untuk modul estimator.py.
 
-Menguji perhitungan jarak menggunakan metode focal length.
+Menguji:
+  - Estimasi jarak berdasarkan lebar block PixyCam
+  - Kalibrasi focal length
+  - Edge cases (width 0, negatif, sangat kecil)
 
-Jalankan: python -m pytest tests/test_estimator.py -v
+Catatan: estimator.py tidak bergantung pada hardware PixyCam
+atau OpenCV. Ia hanya menerima angka lebar (piksel) dan
+menghitung jarak (cm). Unit test ini tetap valid.
 """
 
+import unittest
 import sys
 import os
 
-import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from estimator import DistanceEstimator
 
 
-class TestDistanceEstimator:
-    """Test suite untuk DistanceEstimator."""
+class TestDistanceEstimator(unittest.TestCase):
+    """Test estimasi jarak dari lebar block PixyCam."""
 
-    def setup_method(self):
-        """Inisialisasi estimator dengan nilai kalibrasi yang diketahui."""
-        # focal_length=600, object_width=20cm
-        # Rumus: jarak = (20 × 600) / bbox_width = 12000 / bbox_width
-        self.estimator = DistanceEstimator(
-            focal_length_px=600.0,
-            object_width_cm=20.0,
-        )
+    def setUp(self):
+        # focal=300, object_width=20cm (default PixyCam config)
+        self.est = DistanceEstimator(focal_length_px=300.0, object_width_cm=20.0)
 
     def test_known_distance_50cm(self):
         """
-        Pada jarak 50 cm, bbox width = (20 × 600) / 50 = 240 px.
-        Jadi bbox_width=240 harus menghasilkan ~50 cm.
+        Pada jarak 50cm, lebar block = (20 * 300) / 50 = 120 px.
+        Estimasi: (20 * 300) / 120 = 50.0 cm.
         """
-        distance = self.estimator.estimate(240)
-        assert abs(distance - 50.0) < 0.5
+        result = self.est.estimate(120)
+        self.assertAlmostEqual(result, 50.0, places=1)
 
     def test_known_distance_100cm(self):
         """
-        Pada jarak 100 cm, bbox width = 12000 / 100 = 120 px.
+        Pada jarak 100cm, lebar block = (20 * 300) / 100 = 60 px.
         """
-        distance = self.estimator.estimate(120)
-        assert abs(distance - 100.0) < 0.5
+        result = self.est.estimate(60)
+        self.assertAlmostEqual(result, 100.0, places=1)
 
     def test_known_distance_30cm(self):
         """
-        Pada jarak 30 cm, bbox width = 12000 / 30 = 400 px.
+        Pada jarak 30cm, lebar block = (20 * 300) / 30 = 200 px.
         """
-        distance = self.estimator.estimate(400)
-        assert abs(distance - 30.0) < 0.5
+        result = self.est.estimate(200)
+        self.assertAlmostEqual(result, 30.0, places=1)
 
     def test_known_distance_15cm_evacuation(self):
         """
-        Pada jarak evakuasi 15 cm (threshold), bbox width = 12000 / 15 = 800 px.
+        Pada jarak evakuasi 15cm, lebar block = (20 * 300) / 15 = 400 px.
+        Catatan: Pixy2 resolusi 316px, jadi ini di luar frame — but math works.
         """
-        distance = self.estimator.estimate(800)
-        assert abs(distance - 15.0) < 0.5
+        result = self.est.estimate(400)
+        self.assertAlmostEqual(result, 15.0, places=1)
 
     def test_zero_width_returns_zero(self):
-        """bbox width = 0 → return 0.0 (bukan error/division by zero)."""
-        distance = self.estimator.estimate(0)
-        assert distance == 0.0
+        """Lebar 0 → return 0.0 (hindari division by zero)."""
+        result = self.est.estimate(0)
+        self.assertEqual(result, 0.0)
 
     def test_negative_width_returns_zero(self):
-        """bbox width negatif → return 0.0."""
-        distance = self.estimator.estimate(-10)
-        assert distance == 0.0
+        """Lebar negatif → return 0.0."""
+        result = self.est.estimate(-10)
+        self.assertEqual(result, 0.0)
 
     def test_very_small_width_over_max_range(self):
         """
-        bbox width sangat kecil → jarak sangat besar → di luar range → 0.0.
-        12000 / 1 = 12000 cm > DISTANCE_MAX_CM (500) → return 0.0
+        Lebar sangat kecil → jarak melebihi DISTANCE_MAX_CM → return 0.0.
+        width=1 → distance = 6000 cm → over max 500 cm.
         """
-        distance = self.estimator.estimate(1)
-        assert distance == 0.0
+        result = self.est.estimate(1)
+        self.assertEqual(result, 0.0)
 
     def test_result_is_float(self):
-        """Hasil estimasi harus float."""
-        distance = self.estimator.estimate(240)
-        assert isinstance(distance, float)
+        """Hasil selalu float."""
+        result = self.est.estimate(120)
+        self.assertIsInstance(result, float)
 
     def test_result_is_rounded(self):
         """Hasil dibulatkan ke 1 desimal."""
-        distance = self.estimator.estimate(240)
-        assert distance == round(distance, 1)
+        result = self.est.estimate(77)
+        # 6000 / 77 = 77.922... → 77.9
+        self.assertEqual(result, round(6000.0 / 77, 1))
 
-    def test_distance_decreases_as_bbox_grows(self):
-        """Semakin besar bbox → semakin dekat → jarak lebih kecil."""
-        d1 = self.estimator.estimate(100)  # jauh
-        d2 = self.estimator.estimate(200)  # dekat
-        d3 = self.estimator.estimate(400)  # sangat dekat
-
-        # Semua harus valid (> 0)
-        assert d1 > 0
-        assert d2 > 0
-        assert d3 > 0
-
-        # Urutan jarak: d1 > d2 > d3
-        assert d1 > d2 > d3
+    def test_distance_decreases_as_block_grows(self):
+        """Semakin besar block (dekat) → jarak semakin kecil."""
+        d_far = self.est.estimate(30)
+        d_near = self.est.estimate(150)
+        self.assertGreater(d_far, d_near)
 
     def test_accuracy_within_5cm_at_50cm(self):
-        """
-        Akurasi target: error ≤ ±5 cm pada rentang 15–80 cm.
-        Test pada jarak 50 cm.
-        """
-        # Pada 50 cm, bbox = 240 px
-        distance = self.estimator.estimate(240)
-        assert abs(distance - 50.0) <= 5.0
+        """Di jarak 50cm, estimasi error ≤ ±5 cm."""
+        # Seharusnya tepat di 50 cm
+        result = self.est.estimate(120)
+        self.assertAlmostEqual(result, 50.0, delta=5.0)
 
     def test_accuracy_within_5cm_at_80cm(self):
-        """Test akurasi pada batas atas range: 80 cm."""
-        # Pada 80 cm, bbox = 12000 / 80 = 150 px
-        distance = self.estimator.estimate(150)
-        assert abs(distance - 80.0) <= 5.0
+        """Di jarak 80cm, estimasi error ≤ ±5 cm."""
+        # width = 6000/80 = 75 px
+        result = self.est.estimate(75)
+        self.assertAlmostEqual(result, 80.0, delta=5.0)
 
 
-class TestCalibration:
-    """Test suite untuk method kalibrasi."""
+class TestCalibration(unittest.TestCase):
+    """Test kalibrasi focal length."""
 
     def test_calibrate_returns_expected_focal(self):
-        """Kalibrasi dengan nilai diketahui harus konsisten."""
-        # Jika pada 50 cm, bbox = 240 px, object = 20 cm
-        # focal = (240 × 50) / 20 = 600
-        focal = DistanceEstimator.calibrate(
-            bbox_width_px=240,
-            known_distance_cm=50.0,
-            object_width_cm=20.0,
-        )
-        assert abs(focal - 600.0) < 0.5
+        """Kalibrasi: bbox=120px, jarak=50cm, lebar=20cm → focal=300."""
+        focal = DistanceEstimator.calibrate(120, 50.0, 20.0)
+        self.assertEqual(focal, 300.0)
 
     def test_calibrate_roundtrip(self):
-        """Kalibrasi → buat estimator → estimasi harus cocok."""
-        # Kalibrasi di 40 cm, bbox 300 px, object 20 cm
-        focal = DistanceEstimator.calibrate(
-            bbox_width_px=300,
-            known_distance_cm=40.0,
-            object_width_cm=20.0,
-        )
-
-        # Buat estimator baru dengan focal yang dikalibrasi
-        estimator = DistanceEstimator(
-            focal_length_px=focal,
-            object_width_cm=20.0,
-        )
-
-        # Estimasi pada bbox 300 px harus ~40 cm
-        distance = estimator.estimate(300)
-        assert abs(distance - 40.0) < 1.0
+        """Kalibrasi → estimasi harus konsisten."""
+        focal = DistanceEstimator.calibrate(120, 50.0, 20.0)
+        est = DistanceEstimator(focal_length_px=focal, object_width_cm=20.0)
+        result = est.estimate(120)
+        self.assertAlmostEqual(result, 50.0, places=1)
 
     def test_calibrate_invalid_object_width(self):
-        """object_width_cm = 0 → ValueError."""
-        with pytest.raises(ValueError):
-            DistanceEstimator.calibrate(
-                bbox_width_px=240,
-                known_distance_cm=50.0,
-                object_width_cm=0.0,
-            )
+        """object_width_cm ≤ 0 → ValueError."""
+        with self.assertRaises(ValueError):
+            DistanceEstimator.calibrate(120, 50.0, 0.0)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()

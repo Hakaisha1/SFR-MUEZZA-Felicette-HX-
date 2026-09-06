@@ -1,48 +1,38 @@
 """
-main.py — Entry point utama pipeline Vision.
+main.py — Entry point utama pipeline Vision (PixyCam2 USB Mode).
 
 Mengorkestrasi seluruh pipeline:
-  Frame kamera → Deteksi (HSV) → Klasifikasi → Estimasi jarak → Publish JSON
+  PixyCam2 Blocks → Deteksi → Klasifikasi → Estimasi jarak → Publish JSON
 
 Cara pakai:
-  # Default: buka kamera + tampilkan display
+  # Default: baca PixyCam2 USB, publish ke socket Integration
   python main.py
 
-  # Tanpa display (headless, cocok untuk RPi5 tanpa monitor)
-  python main.py --no-display
+  # Mode stdout (untuk testing mandiri)
+  python main.py --publisher stdout
 
-  # Pakai gambar statis (untuk testing offline)
-  python main.py --image data/dummy/sample_01.jpg
+  # Mode dummy tanpa hardware PixyCam
+  python main.py --dummy
 
-  # Ganti index kamera
-  python main.py --camera 1
-
-  # Mode socket ke Integration
-  python main.py --publisher socket
-
-Tekan 'q' untuk keluar (jika display aktif), atau Ctrl+C.
+Tekan Ctrl+C untuk keluar.
 """
 
 import argparse
 import sys
 import time
-
-import cv2
+import logging
 
 from config import (
-    CAMERA_INDEX,
-    CAMERA_WIDTH,
-    CAMERA_HEIGHT,
-    CAMERA_FPS,
     CONFIDENCE_THRESHOLD,
     OUTPUT_FPS,
-    SHOW_DISPLAY,
+    PIXY_SIG_RIIL,
 )
 from detector import Detector
 from classifier import Classifier
 from estimator import DistanceEstimator
 from publisher import Publisher
-from utils import setup_logger, build_output, draw_overlay, draw_multiple_overlays
+from pixy_usb import PixyUSB, DummyPixy, PixyBlock
+from utils import setup_logger, build_output
 
 logger = setup_logger("vision.main")
 
@@ -50,229 +40,136 @@ logger = setup_logger("vision.main")
 def parse_args():
     """Parse argumen command-line."""
     parser = argparse.ArgumentParser(
-        description="Vision Pipeline — Robot SAR Hexapod MUEZZA",
+        description="Vision Pipeline — Robot SAR Hexapod MUEZZA (PixyCam2 Mode)",
     )
     parser.add_argument(
-        "--camera", type=int, default=CAMERA_INDEX,
-        help=f"Index kamera (default: {CAMERA_INDEX})",
+        "--publisher", type=str, choices=["stdout", "socket"], default=None,
+        help="Mode publisher (default: dari config.py)",
     )
     parser.add_argument(
-        "--image", type=str, default=None,
-        help="Path ke gambar statis (untuk testing offline, skip kamera)",
+        "--dummy", action="store_true",
+        help="Jalankan tanpa hardware PixyCam (mode simulasi)",
     )
-    parser.add_argument(
-        "--no-display", action="store_true",
-        help="Jalankan tanpa tampilan OpenCV (headless)",
-    )
-    parser.add_argument(
-        "--publisher", type=str, choices=["stdout", "socket"], default="stdout",
-        help="Mode publisher (default: stdout)",
-    )
+    # Legacy compatibility: ignore --no-display, --camera, --image
+    parser.add_argument("--no-display", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--camera", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--image", type=str, default=None, help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
-def process_frame_objects(frame, detector: Detector, classifier: Classifier, estimator: DistanceEstimator):
+def select_primary_target(detections: list) -> int:
     """
-    Mendeteksi seluruh objek dalam frame, mengklasifikasi setiap objek secara independen,
-    dan memilih target utama (prioritas: Korban Asli / 'riil').
+    Pilih target utama dari daftar deteksi.
+
+    Strategi:
+      1. Prioritaskan Korban Asli ('riil') jika ada
+      2. Dari yang riil, ambil yang area terbesar (terdekat)
+      3. Jika tidak ada riil, ambil dummy terbesar
+
+    Args:
+        detections: List of DetectionResult dari detector.
 
     Returns:
-        tuple (primary_output_dict, all_objects_info_list, primary_index)
+        Index target utama, atau -1 jika kosong.
     """
-    detections = detector.detect(frame)
-
     if not detections:
-        return build_output(), [], -1
+        return -1
 
-    objects_info = []
-    for det in detections:
-        cls_result = classifier.classify(frame, det.bbox, det.contour)
-        distance = estimator.estimate(det.width)
-        objects_info.append({
-            "bbox": det.bbox,
-            "label": cls_result.label,
-            "confidence": cls_result.confidence,
-            "dist": distance,
-            "center_x": det.center_x,
-            "center_y": det.center_y,
-            "area": det.area,
-            "width": det.width,
-            "scores": cls_result.scores,
-        })
-
-    # Strategi Seleksi Target Utama:
-    # 1. Prioritaskan Korban Asli ('riil') jika terdeteksi di arena
-    riil_indices = [i for i, obj in enumerate(objects_info) if obj["label"] == "riil"]
+    riil_indices = [i for i, d in enumerate(detections) if d.label == "riil"]
 
     if riil_indices:
-        # Jika ada korban asli, ambil yang terbesar / terdekat
-        primary_idx = max(riil_indices, key=lambda i: objects_info[i]["area"])
-    else:
-        # Jika tidak ada korban riil (hanya dummy), ambil dummy terbesar
-        primary_idx = max(range(len(objects_info)), key=lambda i: objects_info[i]["area"])
+        return riil_indices[0]  # Sudah sorted by area desc
 
-    primary_obj = objects_info[primary_idx]
-    primary_output = build_output(
-        label=primary_obj["label"],
-        confidence=primary_obj["confidence"],
-        posisi_x_px=primary_obj["center_x"],
-        posisi_y_px=primary_obj["center_y"],
-        jarak_estimasi_cm=primary_obj["dist"],
-    )
-
-    return primary_output, objects_info, primary_idx
+    return 0  # Ambil terbesar (sudah sorted)
 
 
-def process_single_image(image_path: str, detector, classifier, estimator, show_display: bool):
-    """
-    Proses satu gambar statis untuk testing offline (mendukung banyak objek sekaligus).
-    """
-    frame = cv2.imread(image_path)
-    if frame is None:
-        logger.error("Gagal membaca gambar: %s", image_path)
-        sys.exit(1)
-
-    logger.info("Memproses gambar: %s", image_path)
-
-    # Deteksi dan klasifikasi semua objek
-    output, objects_info, primary_idx = process_frame_objects(
-        frame, detector, classifier, estimator,
-    )
-
-    if objects_info:
-        logger.info(
-            "Ditemukan %d objek: %s",
-            len(objects_info),
-            [(o['label'], f"{o['dist']:.1f}cm", f"conf={o['confidence']:.2f}") for o in objects_info],
-        )
-        logger.info("Target utama terpilih: %s", output)
-    else:
-        logger.info("Tidak ada target terdeteksi.")
-
-    # Render overlay semua objek pada frame
-    draw_multiple_overlays(frame, objects_info, primary_index=primary_idx)
-
-    # Print output JSON kontrak data
-    import json
-    print(json.dumps(output, separators=(",", ":")))
-
-    # Simpan hasil visualisasi selalu ke data/output_result.jpg agar bisa diinspeksi
-    output_debug_path = "data/output_result.jpg"
-    cv2.imwrite(output_debug_path, frame)
-    logger.info("Hasil visualisasi semua objek disimpan ke: %s", output_debug_path)
-
-    if show_display:
-        try:
-            cv2.imshow("Vision - Static Image", frame)
-            logger.info("Tekan sembarang tombol untuk keluar...")
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-        except cv2.error as e:
-            logger.warning("cv2.imshow tidak didukung di environment ini (%s).", e)
-
-
-def run_camera_loop(
-    camera_index: int,
+def run_pixy_loop(
+    pixy_interface,
     detector: Detector,
     classifier: Classifier,
     estimator: DistanceEstimator,
     publisher: Publisher,
-    show_display: bool,
 ):
     """
-    Loop utama: baca kamera → deteksi multi-objek → klasifikasi → publish.
+    Loop utama: baca PixyCam2 → deteksi → klasifikasi → publish.
     """
-    cap = cv2.VideoCapture(camera_index)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
-
-    if not cap.isOpened():
-        logger.error("Gagal membuka kamera index %d", camera_index)
-        sys.exit(1)
-
-    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    actual_fps = cap.get(cv2.CAP_PROP_FPS)
-
-    logger.info(
-        "Kamera dibuka: index=%d, resolusi=%dx%d, FPS=%.0f",
-        camera_index, actual_w, actual_h, actual_fps,
-    )
-    logger.info("Output FPS: %d Hz (sesuai data contract)", OUTPUT_FPS)
-    logger.info("Tekan 'q' untuk keluar (jika display aktif)")
-
     output_interval = 1.0 / OUTPUT_FPS
-    frame_count = 0
-    fps_start_time = time.time()
+    cycle_count = 0
+    start_time = time.time()
     last_output_time = 0.0
+
+    logger.info("Output FPS: %d Hz (sesuai data contract)", OUTPUT_FPS)
+    logger.info("Loop dimulai... (Ctrl+C untuk berhenti)")
 
     try:
         while True:
-            ret, frame = cap.read()
-            if not ret:
-                logger.warning("Gagal membaca frame, skip...")
-                continue
-
-            frame_count += 1
             current_time = time.time()
 
+            # Rate limiting sesuai OUTPUT_FPS
             if (current_time - last_output_time) < output_interval:
+                time.sleep(0.001)  # Yield CPU sebentar
                 continue
 
             last_output_time = current_time
+            cycle_count += 1
 
-            # Deteksi & klasifikasi multi-objek
-            output, objects_info, primary_idx = process_frame_objects(
-                frame, detector, classifier, estimator,
+            # 1. Deteksi semua blocks dari PixyCam
+            detections = detector.detect()
+
+            if not detections:
+                # Tidak ada objek terdeteksi
+                output = build_output()
+                publisher.publish(output)
+
+                if cycle_count % 50 == 0:
+                    logger.info("Cycle #%d | Tidak ada target terdeteksi", cycle_count)
+                continue
+
+            # 2. Pilih target utama
+            primary_idx = select_primary_target(detections)
+            primary = detections[primary_idx]
+
+            # 3. Klasifikasi (pass-through dari signature)
+            cls_result = classifier.classify(primary.label, primary.confidence)
+
+            # 4. Estimasi jarak
+            distance = estimator.estimate(primary.width)
+
+            # 5. Build dan publish output
+            output = build_output(
+                label=cls_result.label,
+                confidence=cls_result.confidence,
+                posisi_x_px=primary.center_x,
+                posisi_y_px=primary.center_y,
+                jarak_estimasi_cm=distance,
             )
-
-            # Publish target utama
             publisher.publish(output)
 
-            # Display
-            if show_display:
-                draw_multiple_overlays(frame, objects_info, primary_index=primary_idx)
-
-                elapsed = current_time - fps_start_time
-                if elapsed > 0:
-                    actual_output_fps = frame_count / elapsed
-                    cv2.putText(
-                        frame,
-                        f"FPS: {actual_output_fps:.1f}",
-                        (CAMERA_WIDTH - 90, CAMERA_HEIGHT - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45,
-                        (0, 255, 0),
-                        1,
-                        cv2.LINE_AA,
-                    )
-
-                try:
-                    cv2.imshow("Vision - Robot SAR Hexapod MUEZZA", frame)
-
-                    key = cv2.waitKey(1) & 0xFF
-                    if key == ord("q"):
-                        logger.info("Keluar (tombol 'q' ditekan)")
-                        break
-                except cv2.error as e:
-                    logger.warning("cv2.imshow tidak didukung di environment ini (%s). Menonaktifkan display GUI...", e)
-                    show_display = False
+            # Log periodik (setiap 50 cycle = 5 detik)
+            if cycle_count % 50 == 0:
+                logger.info(
+                    "Cycle #%d | Deteksi: %d obj | Target: %s (conf=%.2f) | Jarak: %.1f cm",
+                    cycle_count,
+                    len(detections),
+                    cls_result.label,
+                    cls_result.confidence,
+                    distance,
+                )
 
     except KeyboardInterrupt:
-        logger.info("Keluar (Ctrl+C)")
+        logger.info("")
+        logger.info("Ctrl+C diterima — menghentikan pipeline...")
 
     finally:
-        cap.release()
-        if show_display:
-            cv2.destroyAllWindows()
         publisher.close()
+        pixy_interface.close()
 
-        total_time = time.time() - fps_start_time
+        total_time = time.time() - start_time
         if total_time > 0:
             logger.info(
-                "Selesai. Total frame: %d, durasi: %.1fs, avg FPS: %.1f",
-                frame_count, total_time, frame_count / total_time,
+                "Selesai. Total cycles: %d, durasi: %.1fs, avg FPS: %.1f",
+                cycle_count, total_time, cycle_count / total_time,
             )
 
 
@@ -282,32 +179,41 @@ def main():
 
     logger.info("=" * 60)
     logger.info("  Vision Pipeline — Robot SAR Hexapod MUEZZA")
-    logger.info("  Mode: HSV Color Masking")
+    logger.info("  Mode: PixyCam2 USB (Color Connected Components)")
     logger.info("=" * 60)
 
+    # Inisialisasi PixyCam
+    if args.dummy:
+        logger.info("Mode DUMMY aktif — tanpa hardware PixyCam")
+        pixy = DummyPixy()
+        pixy.init()
+        # Set beberapa block dummy untuk testing
+        pixy.set_blocks([
+            PixyBlock(sig=PIXY_SIG_RIIL, x_center=160, y_center=100,
+                      width=80, height=60, angle=0, tracking_index=0, age=10),
+        ])
+    else:
+        pixy = PixyUSB()
+        if not pixy.init():
+            logger.error("Gagal menghubungkan ke PixyCam2. Pastikan:")
+            logger.error("  1. PixyCam2 terhubung via USB")
+            logger.error("  2. libpixyusb2 sudah di-build dan di-install")
+            logger.error("  3. Jalankan dengan sudo jika perlu: sudo python main.py")
+            logger.error("")
+            logger.error("Untuk testing tanpa hardware, gunakan: python main.py --dummy")
+            sys.exit(1)
+
     # Inisialisasi komponen
-    detector = Detector()
+    detector = Detector(pixy_interface=pixy)
     classifier = Classifier()
     estimator = DistanceEstimator()
 
-    show_display = SHOW_DISPLAY and not args.no_display
+    # Publisher
+    pub_mode = args.publisher  # None = ambil dari config
+    publisher = Publisher(mode=pub_mode)
 
-    if args.image:
-        # Mode gambar statis
-        process_single_image(
-            args.image, detector, classifier, estimator, show_display,
-        )
-    else:
-        # Mode kamera live
-        publisher = Publisher(mode=args.publisher)
-        run_camera_loop(
-            camera_index=args.camera,
-            detector=detector,
-            classifier=classifier,
-            estimator=estimator,
-            publisher=publisher,
-            show_display=show_display,
-        )
+    # Jalankan loop utama
+    run_pixy_loop(pixy, detector, classifier, estimator, publisher)
 
 
 if __name__ == "__main__":

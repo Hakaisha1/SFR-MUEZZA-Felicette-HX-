@@ -1,55 +1,50 @@
 """
-config.py — Konfigurasi terpusat untuk pipeline Vision.
+config.py — Konfigurasi terpusat untuk pipeline Vision (PixyCam Mode).
 
-Semua parameter yang perlu di-tuning ada di sini.
-Tidak perlu edit file lain untuk mengubah threshold, warna, atau setting kamera.
+Mode deteksi: PixyCam2 via USB (libpixyusb2).
+PixyCam melakukan deteksi warna secara onboard di hardware kamera,
+sehingga RPi5 hanya menerima data blok (posisi, ukuran, signature)
+tanpa perlu memproses frame gambar sama sekali.
+
+Signature warna harus di-training lebih dulu menggunakan software
+PixyMon di laptop Windows/Mac.
 
 Nilai default mengacu pada:
   - data_contract.json (threshold confidence, jarak, dsb.)
-  - guide.md (resolusi, FPS, metode deteksi)
+  - guide.md (frekuensi output, metode deteksi)
 """
 
-import numpy as np
-
 
 # ============================================================
-# KAMERA
+# PIXYCAM2
 # ============================================================
 
-CAMERA_INDEX = 0               # Index kamera (0 = default USB/CSI)
-CAMERA_WIDTH = 640             # Lebar frame (piksel)
-CAMERA_HEIGHT = 480            # Tinggi frame (piksel)
-CAMERA_FPS = 30                # Target FPS kamera
+# Mode deteksi: "pixy" (PixyCam2 USB) — default
+DETECTION_MODE = "pixy"
 
+# Resolusi internal PixyCam2 (tetap, tidak bisa diubah)
+# Pixy2 CCC mode: 316 x 208 piksel
+PIXY_FRAME_WIDTH = 316
+PIXY_FRAME_HEIGHT = 208
 
-# ============================================================
-# DETEKSI & KLASIFIKASI WARNA
-# - Korban Asli: Warna ORANYE (Saturasi tinggi S >= 70, H = 0-25 / 170-180)
-# - Dummy: Warna ABU-ABU (Saturasi rendah S <= 55, V = 40-200)
-# ============================================================
+# Mapping Signature PixyCam → Label kontrak data
+# Training signature di PixyMon:
+#   Signature 1 = Korban Asli (ORANYE)
+#   Signature 2 = Korban Dummy (ABU-ABU)
+PIXY_SIG_RIIL = 1
+PIXY_SIG_DUMMY = 2
 
-# Mode deteksi: "hsv" (saat ini) atau "yolo" (nanti kalau RPi5 kuat)
-DETECTION_MODE = "hsv"
+# Sigmap bitmask: ambil blocks dari signature 1 dan 2
+# sigmap = (1 << (sig-1)) untuk tiap signature, lalu OR-kan
+# sig1 = 0b01 = 1, sig2 = 0b10 = 2 → sigmap = 0b11 = 3
+PIXY_SIGMAP = 3
 
-# Minimum area kontur (piksel²) agar dianggap deteksi valid.
-MIN_CONTOUR_AREA = 500
+# Jumlah block maksimal yang diminta dari Pixy2 per frame
+PIXY_MAX_BLOCKS = 10
 
-# --- Rentang HSV untuk KORBAN ASLI (ORANYE) ---
-HSV_ORANGE_LOWER_1 = np.array([0, 70, 70])
-HSV_ORANGE_UPPER_1 = np.array([25, 255, 255])
-HSV_ORANGE_LOWER_2 = np.array([170, 70, 70])
-HSV_ORANGE_UPPER_2 = np.array([180, 255, 255])
-
-# --- Rentang HSV untuk DUMMY (ABU-ABU) ---
-HSV_GREY_LOWER = np.array([0, 0, 40])
-HSV_GREY_UPPER = np.array([180, 55, 200])
-
-# Morphological operations: iterasi erode & dilate untuk bersihkan mask
-MORPH_ERODE_ITERATIONS = 2
-MORPH_DILATE_ITERATIONS = 2
-
-# Threshold rasio dominansi warna pada ROI kontur
-COLOR_MATCH_THRESHOLD = 0.40
+# Minimum area blok (piksel²) agar dianggap deteksi valid
+# Pixy2 resolusi 316x208, area minimum ~200 px² sudah cukup kecil
+MIN_BLOCK_AREA = 200
 
 # Jumlah frame untuk voting di state CLASSIFYING (saran: 5 frame)
 CLASSIFICATION_VOTE_FRAMES = 5
@@ -63,12 +58,15 @@ CLASSIFICATION_VOTE_FRAMES = 5
 # Sesuaikan setelah ukur objek nyata di arena
 OBJECT_WIDTH_CM = 20.0
 
-# Focal length kamera dalam piksel — HARUS dikalibrasi!
-# Cara kalibrasi:
-#   1. Letakkan target pada jarak 50 cm dari kamera
-#   2. Ukur lebar bounding box yang terdeteksi (misal 240 px)
-#   3. FOCAL_LENGTH_PX = (240 * 50) / 20.0 = 600.0
-FOCAL_LENGTH_PX = 600.0
+# Focal length PixyCam2 dalam piksel — HARUS dikalibrasi!
+# Cara kalibrasi (sama seperti sebelumnya):
+#   1. Letakkan target pada jarak 50 cm dari PixyCam
+#   2. Catat lebar block yang dilaporkan PixyCam (misal 120 px)
+#   3. FOCAL_LENGTH_PX = (120 * 50) / 20.0 = 300.0
+#
+# Catatan: Lensa PixyCam2 berbeda dari webcam USB biasa.
+# Nilai default 300.0 adalah tebakan awal, WAJIB dikalibrasi.
+FOCAL_LENGTH_PX = 300.0
 
 # Batas jarak yang dianggap valid (cm)
 DISTANCE_MIN_CM = 0.0
@@ -116,15 +114,9 @@ VALID_LABELS = ["dummy", "riil", "tidak_ada"]
 # DEBUG & DISPLAY
 # ============================================================
 
-# Tampilkan jendela OpenCV dengan overlay bounding box + info?
-# Set False jika jalan headless di RPi5 tanpa monitor
-SHOW_DISPLAY = True
-
-# Warna overlay (BGR format)
-COLOR_BBOX_DUMMY = (160, 160, 160)    # Abu-abu (Dummy)
-COLOR_BBOX_RIIL = (0, 255, 0)          # Hijau terang (Korban Asli / Target Utama)
-COLOR_BBOX_UNKNOWN = (200, 200, 200)   # Abu-abu muda
-COLOR_TEXT = (255, 255, 255)         # Putih
+# PixyCam mode berjalan headless (tanpa frame gambar), jadi
+# display OpenCV tidak relevan. Set False.
+SHOW_DISPLAY = False
 
 # Target FPS output ke Integration (sesuai data_contract: 10 Hz)
 OUTPUT_FPS = 10
