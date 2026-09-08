@@ -15,7 +15,7 @@ Agent Movement bertanggung jawab atas **semua perilaku fisik robot** — dari sa
 2. **Inverse Kinematics (IK) Kaki** — Menghitung sudut 3 servo per kaki (18 servo total) dari target posisi ujung kaki.
 3. **Gait Generation** — Menghasilkan pola langkah (tripod, ripple) yang membuat robot berjalan stabil.
 4. **Kontrol Keseimbangan** — Membaca IMU (MPU-9250/6500) dan mengkoreksi postur robot di medan tidak rata.
-5. **Kontrol Gripper/Arm** — Menggerakkan 2–3 servo Dynamixel arm dan 1 servo MG90S (cengkeraman).
+5. **Kontrol Gripper 2-DOF** — Menggerakkan 2 servo Dynamixel gripper: Pitch (ID 0, naik/turun) dan Yaw (ID 33, buka/tutup).
 6. **Obstacle Avoidance Refleks** — Reaksi cepat terhadap data 4 sensor ultrasonik HC-SR04 (dibaca via STM32 Timer Input-Capture) — **tidak menunggu perintah RPi5**.
 7. **Penerima Command UART** — Menerima dan mengeksekusi paket command dari Integration (RPi5).
 
@@ -51,6 +51,7 @@ FreeRTOS Task: MovementTask ◄────────────────�
        ├── GaitGenerator (gait pattern)
        ├── InverseKinematics (per kaki)
        ├── DynamixelDriver (kirim posisi)
+       ├── GripperController (2-DOF: Pitch ID=0, Yaw ID=33)
        ├── IMUReader (MPU-9250 via SPI/I2C)
        ├── UltrasonicReader (4x HC-SR04 via TIM Input-Capture, trigger bergiliran)
        └── ObstacleReflex (keputusan lokal, prioritas tertinggi)
