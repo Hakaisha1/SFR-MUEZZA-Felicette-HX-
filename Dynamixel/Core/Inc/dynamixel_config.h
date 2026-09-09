@@ -42,7 +42,23 @@ static const LegDynamixelIDs_t DXL_ID_MAP[NUM_LEGS] = {
     { .coxa = 17, .femur = 11, .tibia = 5  }
 };
 
-// ID Komponen Lain
-#define DXL_ID_GRIPPER 0
+// ID Komponen Gripper 2-DOF
+// Referensi: dynamixel_id.md
+#define DXL_ID_GRIPPER_PITCH  0    // Servo pitch (naik/turun)
+#define DXL_ID_GRIPPER_YAW    33   // Servo yaw (buka/tutup)
+
+// Backward compatibility alias
+#define DXL_ID_GRIPPER DXL_ID_GRIPPER_PITCH
+
+// Struct penyimpan ID gripper
+typedef struct {
+    uint8_t pitch;
+    uint8_t yaw;
+} GripperDynamixelIDs_t;
+
+static const GripperDynamixelIDs_t DXL_GRIPPER_IDS = {
+    .pitch = DXL_ID_GRIPPER_PITCH,
+    .yaw   = DXL_ID_GRIPPER_YAW
+};
 
 #endif // DYNAMIXEL_CONFIG_H
