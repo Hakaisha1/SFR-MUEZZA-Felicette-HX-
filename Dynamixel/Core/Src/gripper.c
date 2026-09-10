@@ -50,14 +50,16 @@ void Gripper_Init(void) {
 void Gripper_Execute(GripperCommand_t cmd, GripperTarget_t target) {
     switch (cmd) {
         case GRIPPER_CMD_GRIP:
-            g_target_pitch_deg = clamp_pitch(-45.0f);
-            g_target_yaw_deg   = clamp_yaw(GRIPPER_YAW_MAX_DEG);
+            g_target_pitch_deg = clamp_pitch(target.pitch_deg);
+            g_target_yaw_deg   = clamp_yaw(target.yaw_deg);
+            // TODO (Elektrik): Set PWM MG Servo untuk menutup capit (misal duty cycle 10%)
             g_state = GRIPPER_STATE_CLOSING;
             break;
 
         case GRIPPER_CMD_RELEASE:
-            g_target_yaw_deg   = clamp_yaw(GRIPPER_YAW_MIN_DEG);
-            g_target_pitch_deg = clamp_pitch(0.0f);
+            g_target_pitch_deg = clamp_pitch(target.pitch_deg);
+            g_target_yaw_deg   = clamp_yaw(target.yaw_deg);
+            // TODO (Elektrik): Set PWM MG Servo untuk membuka capit (misal duty cycle 5%)
             g_state = GRIPPER_STATE_RELEASING;
             break;
 

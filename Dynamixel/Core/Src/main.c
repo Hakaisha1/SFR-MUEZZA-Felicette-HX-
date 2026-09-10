@@ -153,8 +153,11 @@ void UartProtocol_OnCmdManipulator(const CmdManipulator_t* cmd) {
     }
     
     if (g_cmd != GRIPPER_CMD_NONE) {
-        GripperTarget_t dummy_target = {0};
-        Gripper_Execute(g_cmd, dummy_target);
+        GripperTarget_t target = {
+            .pitch_deg = cmd->sudut_lengan_1,
+            .yaw_deg = cmd->sudut_lengan_2
+        };
+        Gripper_Execute(g_cmd, target);
     }
 }
 
@@ -162,7 +165,7 @@ void UartProtocol_OnCmdManipulator(const CmdManipulator_t* cmd) {
  * @brief Implementasi transmisi hardware UART untuk protokol telemetri
  */
 void UartProtocol_TransmitBytes(uint8_t* data, uint16_t length) {
-    HAL_UART_Transmit(&huart1, data, length, 100);
+    CDC_Transmit_FS(data, length);
 }
 
 /**
@@ -233,8 +236,8 @@ int main(void)
   Gait_Init(&gait_planner);
   Gripper_Init();
 
-  // 4. Mulai interupsi UART RX untuk menerima command dari RPi5
-  HAL_UART_Receive_IT(&huart1, &rx_byte_buffer, 1);
+  // 4. (Dihapus) RPi5 sekarang menggunakan USB CDC, bukan huart1
+  // HAL_UART_Receive_IT(&huart1, &rx_byte_buffer, 1);
 
   last_gait_tick = HAL_GetTick();
   last_telemetry_tick = HAL_GetTick();
