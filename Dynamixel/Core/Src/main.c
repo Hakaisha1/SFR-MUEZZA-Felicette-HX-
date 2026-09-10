@@ -27,6 +27,7 @@
 #include "uart_protocol.h"
 #include "kinematics.h"
 #include "gait_planner.h"
+#include "gripper.h"
 #include "usbd_cdc_if.h"
 #include <stdio.h>
 #include <string.h>
@@ -59,7 +60,7 @@ uint8_t rx_byte_buffer;
 
 /* Subsystem state & gait variables */
 static GaitPlanner_t gait_planner;
-static Dxl_SyncWriteData_t sync_data[18];
+static Dxl_SyncWriteData_t sync_data[20]; // 18 kaki + 2 gripper
 static RobotState_t current_robot_state = STATE_IDLE;
 
 static float current_vx = 0.0f;
@@ -143,10 +144,17 @@ void UartProtocol_OnCmdManipulator(const CmdManipulator_t* cmd) {
     manipulator_arm2 = cmd->sudut_lengan_2;
     manipulator_gripper = cmd->status_gripper;
 
-    // Kontrol servo gripper jika terpasang
-    if (DXL_ID_GRIPPER != 0) {
-        uint16_t grip_pos = (manipulator_gripper == 0) ? 300 : 700;
-        Dxl_SetGoalPosition(DXL_ID_GRIPPER, grip_pos);
+    // Panggil logika Gripper Controller
+    GripperCommand_t g_cmd = GRIPPER_CMD_NONE;
+    if (manipulator_gripper == 0) {
+        g_cmd = GRIPPER_CMD_RELEASE;
+    } else if (manipulator_gripper == 1 || manipulator_gripper == 2) {
+        g_cmd = GRIPPER_CMD_GRIP;
+    }
+    
+    if (g_cmd != GRIPPER_CMD_NONE) {
+        GripperTarget_t dummy_target = {0};
+        Gripper_Execute(g_cmd, dummy_target);
     }
 }
 
@@ -216,9 +224,14 @@ int main(void)
       Dxl_TorqueEnable(DXL_ID_MAP[i].femur, true);
       Dxl_TorqueEnable(DXL_ID_MAP[i].tibia, true);
   }
+  
+  // Aktifkan torsi untuk Gripper
+  Dxl_TorqueEnable(DXL_GRIPPER_IDS.pitch, true);
+  Dxl_TorqueEnable(DXL_GRIPPER_IDS.yaw, true);
 
-  // 3. Inisialisasi Tripod Gait Planner
+  // 3. Inisialisasi Tripod Gait Planner & Gripper
   Gait_Init(&gait_planner);
+  Gripper_Init();
 
   // 4. Mulai interupsi UART RX untuk menerima command dari RPi5
   HAL_UART_Receive_IT(&huart1, &rx_byte_buffer, 1);
@@ -265,10 +278,28 @@ int main(void)
                 }
             }
 
-            // Kirim SyncWrite ke 18 servo sekaligus via USART1
-            if (sync_idx == 18) {
-                Dxl_SyncWritePosition(sync_data, 18);
+            // Tambahkan update Gripper ke array sync_data
+            Gripper_Update(now);
+            GripperDxlPositions_t g_pos = Gripper_GetDxlPositions();
+            
+            sync_data[sync_idx].id = DXL_GRIPPER_IDS.pitch;
+            sync_data[sync_idx].position = g_pos.pitch_raw;
+            sync_idx++;
+            
+            sync_data[sync_idx].id = DXL_GRIPPER_IDS.yaw;
+            sync_data[sync_idx].position = g_pos.yaw_raw;
+            sync_idx++;
+
+            // Kirim SyncWrite ke 20 servo sekaligus via USART1
+            if (sync_idx == 20) {
+                Dxl_SyncWritePosition(sync_data, 20);
             }
+        } else {
+            // Update Gripper biarpun IDLE
+            Gripper_Update(now);
+            GripperDxlPositions_t g_pos = Gripper_GetDxlPositions();
+            Dxl_SetGoalPosition(DXL_GRIPPER_IDS.pitch, g_pos.pitch_raw);
+            Dxl_SetGoalPosition(DXL_GRIPPER_IDS.yaw, g_pos.yaw_raw);
         }
     }
 
