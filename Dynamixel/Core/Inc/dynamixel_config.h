@@ -33,13 +33,13 @@ static const LegDynamixelIDs_t DXL_ID_MAP[NUM_LEGS] = {
     // Kiri B (Tibia 18: ada catatan kabel harus direct)
     { .coxa = 6,  .femur = 12, .tibia = 18 },
     // Kiri C
-    { .coxa = 3,  .femur = 9,  .tibia = 15 },
+    { .coxa = 1,  .femur = 7,  .tibia = 13},
     // Kanan A
-    { .coxa = 1,  .femur = 7,  .tibia = 13 },
+    { .coxa = 6,  .femur = 12,  .tibia = 18},
     // Kanan B (Coxa 2 masih dibersihkan)
     { .coxa = 2,  .femur = 8,  .tibia = 14 },
     // Kanan C (Urutan memutar karena kabel)
-    { .coxa = 17, .femur = 11, .tibia = 5  }
+    { .coxa = 3, .femur = 9, .tibia = 15  }
 };
 
 // ID Komponen Gripper 2-DOF

@@ -72,43 +72,43 @@ void Error_Handler(void);
 
 // --- 1b. SERVO MG (END EFFECTOR / CAPIT) ---
 // Note: Butuh hardware timer PWM (misal TIM2_CH1). Aktifkan di .ioc nanti.
-#define SERVO_GRIP_PORT         GPIOA
-#define SERVO_GRIP_PIN          GPIO_PIN_0    // Contoh: TIM2_CH1
+#define SERVO_GRIP_PORT         GPIOB
+#define SERVO_GRIP_PIN          GPIO_PIN_8   // Contoh: TIM2_CH1
 
 // --- 2. SENSOR ULTRASONIK (HC-SR04) ---
 // Sensor Depan
 #define US_DEPAN_TRIG_PORT      GPIOB
-#define US_DEPAN_TRIG_PIN       GPIO_PIN_0
-#define US_DEPAN_ECHO_PORT      GPIOB
-#define US_DEPAN_ECHO_PIN       GPIO_PIN_1
+#define US_DEPAN_TRIG_PIN       GPIO_PIN_12
+#define US_DEPAN_ECHO_PORT      GPIOA
+#define US_DEPAN_ECHO_PIN       GPIO_PIN_10
 
 // Sensor Belakang
 #define US_BELAKANG_TRIG_PORT   GPIOB
 #define US_BELAKANG_TRIG_PIN    GPIO_PIN_2
 #define US_BELAKANG_ECHO_PORT   GPIOB
-#define US_BELAKANG_ECHO_PIN    GPIO_PIN_3
+#define US_BELAKANG_ECHO_PIN    GPIO_PIN_14
 
 // Sensor Kiri
 #define US_KIRI_TRIG_PORT       GPIOB
 #define US_KIRI_TRIG_PIN        GPIO_PIN_4
 #define US_KIRI_ECHO_PORT       GPIOB
-#define US_KIRI_ECHO_PIN        GPIO_PIN_5
+#define US_KIRI_ECHO_PIN        GPIO_PIN_13
 
 // Sensor Kanan
 #define US_KANAN_TRIG_PORT      GPIOB
 #define US_KANAN_TRIG_PIN       GPIO_PIN_6
-#define US_KANAN_ECHO_PORT      GPIOB
-#define US_KANAN_ECHO_PIN       GPIO_PIN_7
+#define US_KANAN_ECHO_PORT      GPIOA
+#define US_KANAN_ECHO_PIN       GPIO_PIN_15
 
 // --- 3. TOMBOL (USER INTERFACE) ---
-#define BTN_START_PORT          GPIOC
-#define BTN_START_PIN           GPIO_PIN_13   // Contoh: Tombol Start
+#define BTN_START_PORT          GPIOB
+#define BTN_START_PIN           GPIO_PIN_15   // Contoh: Tombol Start
 #define BTN_ESTOP_PORT          GPIOC
-#define BTN_ESTOP_PIN           GPIO_PIN_14   // Contoh: Tombol Emergency Stop
+#define BTN_ESTOP_PIN           GPIO_PIN_14   // ilangin
 
 // --- 4. BUZZER / INDIKATOR ---
 #define BUZZER_PORT             GPIOA
-#define BUZZER_PIN              GPIO_PIN_4
+#define BUZZER_PIN              GPIO_PIN_8
 
 // ============================================================================
 

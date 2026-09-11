@@ -169,8 +169,11 @@ void UartProtocol_TransmitBytes(uint8_t* data, uint16_t length) {
 }
 
 /**
- * @brief Callback interupsi UART RX saat menerima byte dari RPi5
+ * @brief (DIHAPUS) Callback interupsi UART RX saat menerima byte dari RPi5
+ * Karena RPi5 sudah dipindah ke USB CDC, interupsi UART1 (Dynamixel) 
+ * tidak boleh masuk ke parser RPi5.
  */
+/*
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART1) {
         // 1. Kirim byte ke mesin parser non-blocking
@@ -180,7 +183,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         HAL_UART_Receive_IT(huart, &rx_byte_buffer, 1);
     }
 }
-
+*/
 /* USER CODE END 0 */
 
 /**
