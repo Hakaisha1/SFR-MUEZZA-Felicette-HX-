@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../dynamixel_id_leg"
+		},
+		{
+			"name": "dynamixel_arduino",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
