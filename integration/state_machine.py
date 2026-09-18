@@ -132,7 +132,7 @@ class StateMachine:
         now = time.monotonic()
 
         if self.state == SubState.SEARCHING:
-            commands.extend(self._handle_searching(data_vision, now))
+            commands.extend(self._handle_searching(data_vision, data_telemetry, now))
 
         elif self.state == SubState.APPROACHING:
             commands.extend(self._handle_approaching(data_vision, now))
@@ -165,8 +165,8 @@ class StateMachine:
 
     # ── Handler per State ──
 
-    def _handle_searching(self, data_vision: dict, now: float) -> list:
-        """SEARCHING: Jelajahi arena, cari target."""
+    def _handle_searching(self, data_vision: dict, data_telemetry: dict, now: float) -> list:
+        """SEARCHING: Jelajahi arena, cari target, dan hindari tembok."""
         label = data_vision.get('label', 'tidak_ada')
         confidence = data_vision.get('confidence', 0.0)
 
@@ -174,6 +174,22 @@ class StateMachine:
             self._waktu_objek_terakhir_terlihat = now
             self._transisi(SubState.APPROACHING)
             return []
+
+        # --- LOGIKA MENGHINDARI TEMBOK (OBSTACLE AVOIDANCE) ---
+        us_depan = data_telemetry.get('us_depan_mm', 9999)
+        us_kiri = data_telemetry.get('us_kiri_mm', 9999)
+        us_kanan = data_telemetry.get('us_kanan_mm', 9999)
+
+        # Threshold 300 mm (30 cm)
+        if us_depan < 300:
+            logger.info(f"TEMBOK di depan ({us_depan} mm)! Menghindar...")
+            # Cek mana yang lebih lega, kiri atau kanan?
+            if us_kiri > us_kanan:
+                # Belok Kiri putar di tempat
+                return [self._cmd_gerak(0.0, 0.0, 0.5)]
+            else:
+                # Belok Kanan putar di tempat
+                return [self._cmd_gerak(0.0, 0.0, -0.5)]
 
         # Tetap searching — kirim command gerak eksplorasi
         # (pola eksplorasi: maju lambat + sedikit rotasi untuk scanning)
