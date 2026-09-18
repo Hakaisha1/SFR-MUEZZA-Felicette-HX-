@@ -35,7 +35,7 @@ from vision_listener import VisionListener
 INTERVAL_LOOP_S = 0.1  # 10 Hz — kirim command tiap 100ms
 
 
-def buat_serial_port(port: str = '/dev/ttyAMA0', baudrate: int = 115200):
+def buat_serial_port(port: str = '/dev/ttyACM0', baudrate: int = 115200):
     """
     Buat koneksi serial ke STM32.
 
