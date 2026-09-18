@@ -238,7 +238,7 @@ const float R_BODY = 118.5f; // Radius (Diameter 237/2)
 const float DEFAULT_Y = 90.0f; // Jarak horizontal ujung kaki (dipersempit agar tidak mengangkang)
 const float MOUNT_ANGLES[6] = { 135.0f, 90.0f, 45.0f, -135.0f, -90.0f, -45.0f }; // L_B, L_M, L_F, R_B, R_M, R_F
 const float STAND_Z = -50.0f; // Ketinggian berdiri default (5cm)
-const float STEP_HEIGHT = 40.0f; // Berapa mm kaki diangkat (Lift 40mm)
+const float STEP_HEIGHT = 60.0f; // Langkah Kuda: Angkat 60mm agar tidak tersandung batu/tanjakan
 
 float gait_phase = 0.0f;
 uint32_t last_gait_time = 0;
@@ -386,6 +386,15 @@ void setup() {
   for (int i = 0; i < 6; i++) {
     for (int j = 0; j < 3; j++) {
       dxlWrite(legs[i].port, legs[i].ids[j], 32, 100, 2); // Set Moving Speed (32) jadi 100 (Slow) agar tidak menghentak
+      
+      // SUSPENSI DIGITAL: Lenturkan paha dan betis agar bisa meredam bebatuan tanpa bikin body miring
+      if (j > 0) { 
+        dxlWrite(legs[i].port, legs[i].ids[j], 26, 4, 1); // CW Compliance Margin
+        dxlWrite(legs[i].port, legs[i].ids[j], 27, 4, 1); // CCW Compliance Margin
+        dxlWrite(legs[i].port, legs[i].ids[j], 28, 64, 1); // CW Compliance Slope (Empuk)
+        dxlWrite(legs[i].port, legs[i].ids[j], 29, 64, 1); // CCW Compliance Slope (Empuk)
+      }
+      
       dxlWrite(legs[i].port, legs[i].ids[j], 24, 1, 1);   // Baru nyalakan Torque (24)
     }
     // Langsung paksa kaki ini ke posisi berdiri
