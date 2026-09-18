@@ -17,7 +17,8 @@ Dokumen ini berisi pemetaan ID Dynamixel untuk masing-masing kaki robot (Hexapod
 
 | Posisi Bagian | ID Servo | Status & Catatan |
 | :--- | :---: | :--- |
-| **Gripper (Capit)** | `0` | ✅ **Normal.** ID 0 berhasil terdeteksi sendirian dari hasil scan. |
+| **Gripper (Pitch)** | `0` | ✅ **Normal.** Servo gripper lama. |
+| **Gripper (Yaw)** | `33` | ✅ **Normal.** Servo baru, berhasil diubah dari ID 1. |
 
 ---
 *Catatan Tambahan:*
