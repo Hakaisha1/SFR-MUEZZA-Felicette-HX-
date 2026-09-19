@@ -130,6 +130,7 @@ void parseSerialCDC() {
       else if (b == 'q' || b == 'Q') { test_mode = true; cmd_vel_x = 0; cmd_vel_y = 0; cmd_vel_yaw = 0.5f; robot_state = 1; Serial.println("TEST: ROTASI KIRI (Yaw+)"); }
       else if (b == 'e' || b == 'E') { test_mode = true; cmd_vel_x = 0; cmd_vel_y = 0; cmd_vel_yaw = -0.5f; robot_state = 1; Serial.println("TEST: ROTASI KANAN (Yaw-)"); }
       else if (b == ' ')             { test_mode = true; cmd_vel_x = 0; cmd_vel_y = 0; cmd_vel_yaw = 0; robot_state = 1; Serial.println("TEST: STOP (Berdiri IDLE)"); }
+      else if (b == 'z' || b == 'Z') { test_mode = true; cmd_vel_x = 0; cmd_vel_y = 0; cmd_vel_yaw = 0; robot_state = 4; Serial.println("TEST: SHOWCASE DANCE MODE"); }
       else if (b == 'x' || b == 'X') { test_mode = true; robot_state = 3; Serial.println("TEST: EMERGENCY STOP (Torque Lepas)"); }
       
       // === DEBUG CAPIT (GRIPPER & ARM) ===
@@ -303,6 +304,20 @@ void updateGait() {
   float vyaw = cmd_vel_yaw; 
   
   float speed = sqrt(vx*vx + vy*vy) + abs(vyaw) * R_BODY;
+  
+  // === SHOWCASE DANCE MODE ===
+  if (robot_state == 4) {
+    gait_phase += dt * 1.5f; // Tempo ayunan (1.5 putaran per detik)
+    if (gait_phase > 1.0f) gait_phase -= 1.0f;
+    
+    float wave = sin(gait_phase * 2.0f * PI) * 35.0f; // Naik turun 35mm
+    for (int i = 0; i < 6; i++) {
+        // Kiri (0,1,2) naik saat Kanan (3,4,5) turun
+        float z = STAND_Z + ((i < 3) ? wave : -wave);
+        solveLegIK(i, 0, 0, z);
+    }
+    return;
+  }
   
   if (speed < 5.0f || robot_state != 1) { 
     // Berhenti / IDLE: Kembalikan kaki ke pijakan semula
